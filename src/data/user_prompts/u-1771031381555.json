@@ -1,0 +1,83 @@
+{
+  "user_id": "u-1771031381555",
+  "generated_at": "2026-02-16T12:30:53.115Z",
+  "based_on_count": 5,
+  "threshold": 5,
+  "profile": {
+    "main_category": "Idraulico",
+    "total_quotes": 5,
+    "margine_medio": 30,
+    "prezzi_medi": {
+      "standard": 1678,
+      "premium": 1007,
+      "economy": 336
+    },
+    "voci_ricorrenti": [
+      {
+        "description": "intervento professionale",
+        "frequenza": 1,
+        "prezzo_medio": 400,
+        "costo_medio": null,
+        "margine_medio": null
+      },
+      {
+        "description": "manodopera specializzata",
+        "frequenza": 1,
+        "prezzo_medio": 525,
+        "costo_medio": null,
+        "margine_medio": null
+      },
+      {
+        "description": "materiali e forniture",
+        "frequenza": 1,
+        "prezzo_medio": 300,
+        "costo_medio": null,
+        "margine_medio": null
+      },
+      {
+        "description": "manodopera posa pannelli radianti",
+        "frequenza": 1,
+        "prezzo_medio": 1200,
+        "costo_medio": null,
+        "margine_medio": null
+      },
+      {
+        "description": "pannelli radianti e tubazioni",
+        "frequenza": 1,
+        "prezzo_medio": 800,
+        "costo_medio": null,
+        "margine_medio": null
+      },
+      {
+        "description": "collettore e regolazione",
+        "frequenza": 1,
+        "prezzo_medio": 350,
+        "costo_medio": null,
+        "margine_medio": null
+      },
+      {
+        "description": "manodopera idraulico",
+        "frequenza": 1,
+        "prezzo_medio": 280,
+        "costo_medio": null,
+        "margine_medio": null
+      },
+      {
+        "description": "tubazioni e raccordi gas",
+        "frequenza": 1,
+        "prezzo_medio": 150,
+        "costo_medio": null,
+        "margine_medio": null
+      },
+      {
+        "description": "manutenzione caldaia",
+        "frequenza": 1,
+        "prezzo_medio": 120,
+        "costo_medio": null,
+        "margine_medio": null
+      }
+    ],
+    "preferred_preset": "standard"
+  },
+  "context_prompt": "Professionista: Idraulico, 5 preventivi completati. Margine medio applicato: 30%. Totale medio per fascia: standard: 1678€, premium: 1007€, economy: 336€. USA questi dati per allineare prezzi, margini e stile delle voci a quelli abituali di questo professionista."
+}

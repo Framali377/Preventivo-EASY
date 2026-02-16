@@ -1,0 +1,46 @@
+[
+  {
+    "id": "ordinario_22",
+    "name": "Regime ordinario — IVA 22%",
+    "iva_percent": 22,
+    "ritenuta_percent": 20,
+    "ritenuta_note": "Ritenuta d'acconto 20% su imponibile (per prestazioni a soggetti con P.IVA)",
+    "previdenza": "gestione_separata",
+    "previdenza_percent": 0,
+    "previdenza_note": "",
+    "note": "Regime standard per imprese e artigiani. Ritenuta applicata solo se il cliente è titolare di P.IVA."
+  },
+  {
+    "id": "forfettario",
+    "name": "Regime forfettario — no IVA",
+    "iva_percent": 0,
+    "ritenuta_percent": 0,
+    "ritenuta_note": "",
+    "previdenza": "gestione_separata",
+    "previdenza_percent": 0,
+    "previdenza_note": "Contributi INPS gestione separata a carico del professionista (non in fattura)",
+    "note": "Nessuna IVA in fattura. Soggetto a imposta sostitutiva 15% (o 5% per i primi 5 anni). Verificare limiti di fatturato con il proprio commercialista."
+  },
+  {
+    "id": "con_cassa",
+    "name": "Professionista con Cassa — IVA 22% + contributo 4%",
+    "iva_percent": 22,
+    "ritenuta_percent": 20,
+    "ritenuta_note": "Ritenuta d'acconto 20% applicata su imponibile + contributo cassa",
+    "previdenza": "cassa",
+    "previdenza_percent": 4,
+    "previdenza_note": "Contributo integrativo cassa professionale 4% sull'imponibile (es. Inarcassa, Cassa Forense). L'aliquota può variare per cassa: verificare.",
+    "note": "Per professionisti iscritti ad albo con cassa previdenziale propria (ingegneri, architetti, avvocati, commercialisti, geometri, ecc.)."
+  },
+  {
+    "id": "sanitario_esente",
+    "name": "Prestazioni sanitarie — esenti IVA",
+    "iva_percent": 0,
+    "ritenuta_percent": 20,
+    "ritenuta_note": "Ritenuta d'acconto 20% se il cliente è soggetto P.IVA",
+    "previdenza": "cassa",
+    "previdenza_percent": 0,
+    "previdenza_note": "ENPAM o altra cassa sanitaria. Il contributo integrativo varia per cassa: verificare con il proprio ordine.",
+    "note": "Prestazioni sanitarie esenti IVA art. 10 DPR 633/72. Soggette a ritenuta d'acconto se fatturate a soggetti con P.IVA."
+  }
+]

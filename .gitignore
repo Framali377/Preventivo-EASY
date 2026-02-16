@@ -1,0 +1,10 @@
+# OS / temp
+NUL
+tmp*
+*.tmp
+cookies.txt
+.claude/
+node_modules/
+
+# env
+.env

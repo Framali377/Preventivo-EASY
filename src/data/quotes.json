@@ -1,0 +1,696 @@
+[
+  {
+    "quote_id": "q-1771005664270",
+    "created_at": "2026-02-13T18:01:04.270Z",
+    "professional": {
+      "name": "Marco Rossi",
+      "category": "Idraulico",
+      "city": "Milano"
+    },
+    "client": {
+      "name": "Anna Bianchi",
+      "email": "anna.bianchi@example.com"
+    },
+    "job_description": "Sostituzione caldaia a condensazione e installazione termostato smart in appartamento 90mq",
+    "pricing_preset": "premium",
+    "line_items": [
+      {
+        "description": "Intervento professionale",
+        "quantity": 1,
+        "unit_price": 400,
+        "subtotal": 400
+      }
+    ],
+    "subtotal": 400,
+    "taxes": 0,
+    "total": 400,
+    "currency": "EUR",
+    "payment_terms": "50% acconto, saldo a fine lavori",
+    "validity_days": 14,
+    "status": "sent"
+  },
+  {
+    "quote_id": "q-1771006039829",
+    "created_at": "2026-02-13T18:07:19.829Z",
+    "professional": {
+      "name": "Marco Rossi",
+      "category": "Elettricista",
+      "city": "Roma"
+    },
+    "client": {
+      "name": "Luca Verdi",
+      "email": "luca@example.com"
+    },
+    "job_description": "Impianto elettrico completo per ufficio 120mq",
+    "pricing_preset": "standard",
+    "line_items": [
+      {
+        "description": "Intervento professionale",
+        "quantity": 1,
+        "unit_price": 400,
+        "subtotal": 400
+      }
+    ],
+    "subtotal": 400,
+    "taxes": 0,
+    "total": 400,
+    "currency": "EUR",
+    "payment_terms": "50% acconto, saldo a fine lavori",
+    "validity_days": 14,
+    "status": "draft"
+  },
+  {
+    "quote_id": "q-1771006101544",
+    "created_at": "2026-02-13T18:08:21.544Z",
+    "professional": {
+      "name": "Giulia Neri",
+      "category": "Architetto",
+      "city": "Firenze"
+    },
+    "client": {
+      "name": "Paolo Gialli",
+      "email": "paolo@test.com"
+    },
+    "job_description": "Progettazione ristrutturazione completa bilocale 55mq centro storico",
+    "pricing_preset": "premium",
+    "ai_generated": false,
+    "line_items": [
+      {
+        "description": "Intervento professionale",
+        "quantity": 1,
+        "unit_price": 400,
+        "subtotal": 400
+      }
+    ],
+    "subtotal": 400,
+    "taxes": 88,
+    "total": 488,
+    "currency": "EUR",
+    "payment_terms": "50% acconto, saldo a fine lavori",
+    "validity_days": 14,
+    "status": "accepted"
+  },
+  {
+    "quote_id": "q-1771031580493",
+    "created_at": "2026-02-14T01:13:00.493Z",
+    "user_id": "u-1771031381555",
+    "professional": {
+      "name": "Marco Rossi",
+      "category": "Idraulico",
+      "city": "Milano"
+    },
+    "client": {
+      "name": "Sofia Verdi",
+      "email": "sofia@test.com"
+    },
+    "job_description": "Riparazione perdita bagno e sostituzione rubinetteria",
+    "pricing_preset": "standard",
+    "ai_generated": false,
+    "line_items": [
+      {
+        "description": "Intervento professionale",
+        "quantity": 1,
+        "unit_price": 400,
+        "subtotal": 400
+      }
+    ],
+    "subtotal": 400,
+    "taxes": 88,
+    "total": 488,
+    "currency": "EUR",
+    "payment_terms": "50% acconto, saldo a fine lavori",
+    "validity_days": 14,
+    "status": "draft"
+  },
+  {
+    "quote_id": "q-1771032367949",
+    "public_link_slug": "abb7511b9b9a",
+    "created_at": "2026-02-14T01:26:07.949Z",
+    "owner_user_id": "u-1771031381555",
+    "user_id": "u-1771031381555",
+    "professional": {
+      "name": "Marco Rossi",
+      "category": "Idraulico",
+      "city": "Milano"
+    },
+    "client": {
+      "name": "Laura Bianchi",
+      "email": "laura.bianchi@example.com"
+    },
+    "job_description": "Rifacimento impianto idraulico bagno principale con sostituzione tubazioni, installazione miscelatori termostatici e piatto doccia filo pavimento",
+    "pricing_preset": "premium",
+    "ai_generated": false,
+    "line_items": [
+      {
+        "description": "Manodopera specializzata",
+        "quantity": 1,
+        "unit_price": 525,
+        "subtotal": 525
+      },
+      {
+        "description": "Materiali e forniture",
+        "quantity": 1,
+        "unit_price": 300,
+        "subtotal": 300
+      }
+    ],
+    "subtotal": 825,
+    "taxes": 182,
+    "total": 1007,
+    "currency": "EUR",
+    "payment_terms": "50% acconto, saldo a fine lavori",
+    "validity_days": 14,
+    "notes": "Preventivo mock generato senza AI.",
+    "status": "sent"
+  },
+  {
+    "quote_id": "q-1771032547724",
+    "public_link_slug": "65b9f31d4455",
+    "created_at": "2026-02-14T01:29:07.724Z",
+    "owner_user_id": "u-1771031381555",
+    "user_id": "u-1771031381555",
+    "professional": {
+      "name": "Marco Rossi",
+      "category": "Idraulico",
+      "city": "Milano"
+    },
+    "client": {
+      "name": "Giovanni Neri",
+      "email": "g.neri@test.com"
+    },
+    "job_description": "Installazione impianto di riscaldamento a pavimento per appartamento 75mq",
+    "pricing_preset": "standard",
+    "ai_generated": false,
+    "line_items": [
+      {
+        "description": "Manodopera posa pannelli radianti",
+        "quantity": 1,
+        "unit_price": 1200,
+        "subtotal": 1200
+      },
+      {
+        "description": "Pannelli radianti e tubazioni",
+        "quantity": 1,
+        "unit_price": 800,
+        "subtotal": 800
+      },
+      {
+        "description": "Collettore e regolazione",
+        "quantity": 1,
+        "unit_price": 350,
+        "subtotal": 350
+      }
+    ],
+    "subtotal": 2350,
+    "taxes": 517,
+    "total": 2867,
+    "currency": "EUR",
+    "payment_terms": "30% acconto, 70% a fine lavori",
+    "validity_days": 21,
+    "notes": "Preventivo per riscaldamento a pavimento.",
+    "status": "sent"
+  },
+  {
+    "quote_id": "q-1771032616304",
+    "public_link_slug": "2ba6fdd84986",
+    "created_at": "2026-02-14T01:30:16.304Z",
+    "owner_user_id": "u-1771031381555",
+    "user_id": "u-1771031381555",
+    "professional": {
+      "name": "Marco Rossi",
+      "category": "Idraulico",
+      "city": "Milano"
+    },
+    "client": {
+      "name": "Elena Russo",
+      "email": "elena@test.com"
+    },
+    "job_description": "Sostituzione completa impianto gas con certificazione",
+    "pricing_preset": "economy",
+    "ai_generated": false,
+    "line_items": [
+      {
+        "description": "Manodopera idraulico",
+        "quantity": 1,
+        "unit_price": 280,
+        "subtotal": 280
+      },
+      {
+        "description": "Tubazioni e raccordi gas",
+        "quantity": 1,
+        "unit_price": 150,
+        "subtotal": 150
+      }
+    ],
+    "subtotal": 430,
+    "taxes": 95,
+    "total": 525,
+    "currency": "EUR",
+    "payment_terms": "Saldo a fine lavori",
+    "validity_days": 14,
+    "notes": "Certificazione inclusa.",
+    "status": "sent"
+  },
+  {
+    "quote_id": "q-1771032657874",
+    "public_link_slug": "47ff93de0a27",
+    "created_at": "2026-02-14T01:30:57.874Z",
+    "owner_user_id": "u-1771031381555",
+    "user_id": "u-1771031381555",
+    "professional": {
+      "name": "Marco Rossi",
+      "category": "Idraulico",
+      "city": "Milano"
+    },
+    "client": {
+      "name": "Test",
+      "email": "t@t.com"
+    },
+    "job_description": "Manutenzione caldaia annuale",
+    "pricing_preset": "economy",
+    "ai_generated": false,
+    "line_items": [
+      {
+        "description": "Manutenzione caldaia",
+        "quantity": 1,
+        "unit_price": 120,
+        "subtotal": 120
+      }
+    ],
+    "subtotal": 120,
+    "taxes": 26,
+    "total": 146,
+    "currency": "EUR",
+    "payment_terms": "Saldo immediato",
+    "validity_days": 7,
+    "notes": null,
+    "status": "sent"
+  },
+  {
+    "quote_id": "q-1771033091913",
+    "public_link_slug": "39c0d244dde7",
+    "created_at": "2026-02-14T01:38:11.913Z",
+    "owner_user_id": "u-1771033091811",
+    "user_id": "u-1771033091811",
+    "professional": {
+      "name": "Test Free",
+      "category": "Pittore",
+      "city": "Napoli"
+    },
+    "client": {
+      "name": "C1",
+      "email": "c1@t.com"
+    },
+    "job_description": "Lavoro 1",
+    "pricing_preset": "standard",
+    "ai_generated": false,
+    "line_items": [
+      {
+        "description": "Voce 1",
+        "quantity": 1,
+        "unit_price": 100,
+        "subtotal": 100
+      }
+    ],
+    "subtotal": 100,
+    "taxes": 22,
+    "total": 122,
+    "currency": "EUR",
+    "payment_terms": "50% acconto, saldo a fine lavori",
+    "validity_days": 14,
+    "notes": null,
+    "status": "sent"
+  },
+  {
+    "quote_id": "q-1771033125345",
+    "public_link_slug": "84f088121949",
+    "created_at": "2026-02-14T01:38:45.345Z",
+    "owner_user_id": "u-1771033103654",
+    "user_id": "u-1771033103654",
+    "professional": {
+      "name": "Free Due",
+      "category": "Muratore",
+      "city": "Bari"
+    },
+    "client": {
+      "name": "C1",
+      "email": "c1@t.com"
+    },
+    "job_description": "Lavoro 1",
+    "pricing_preset": "standard",
+    "ai_generated": false,
+    "line_items": [
+      {
+        "description": "Muratura",
+        "quantity": 1,
+        "unit_price": 100,
+        "subtotal": 100
+      }
+    ],
+    "subtotal": 100,
+    "taxes": 22,
+    "total": 122,
+    "currency": "EUR",
+    "payment_terms": "50% acconto, saldo a fine lavori",
+    "validity_days": 14,
+    "notes": null,
+    "status": "sent"
+  },
+  {
+    "quote_id": "q-1771033204669",
+    "public_link_slug": "66917d925aae",
+    "created_at": "2026-02-14T01:40:04.669Z",
+    "owner_user_id": "u-1771033174248",
+    "user_id": "u-1771033174248",
+    "professional": {
+      "name": "Luca Free",
+      "category": "Imbianchino",
+      "city": "Torino"
+    },
+    "client": {
+      "name": "Cliente 1",
+      "email": "c1@t.com"
+    },
+    "job_description": "Lavoro 1 tinteggiatura",
+    "pricing_preset": "standard",
+    "ai_generated": false,
+    "line_items": [
+      {
+        "description": "Tinteggiatura pareti",
+        "quantity": 1,
+        "unit_price": 100,
+        "subtotal": 100
+      }
+    ],
+    "subtotal": 100,
+    "taxes": 22,
+    "total": 122,
+    "currency": "EUR",
+    "payment_terms": "50% acconto, saldo a fine lavori",
+    "validity_days": 14,
+    "notes": null,
+    "status": "sent"
+  },
+  {
+    "quote_id": "q-1771033205437",
+    "public_link_slug": "bd26ea2c1fba",
+    "created_at": "2026-02-14T01:40:05.437Z",
+    "owner_user_id": "u-1771033174248",
+    "user_id": "u-1771033174248",
+    "professional": {
+      "name": "Luca Free",
+      "category": "Imbianchino",
+      "city": "Torino"
+    },
+    "client": {
+      "name": "Cliente 2",
+      "email": "c2@t.com"
+    },
+    "job_description": "Lavoro 2 tinteggiatura",
+    "pricing_preset": "standard",
+    "ai_generated": false,
+    "line_items": [
+      {
+        "description": "Tinteggiatura pareti",
+        "quantity": 1,
+        "unit_price": 200,
+        "subtotal": 200
+      }
+    ],
+    "subtotal": 200,
+    "taxes": 44,
+    "total": 244,
+    "currency": "EUR",
+    "payment_terms": "50% acconto, saldo a fine lavori",
+    "validity_days": 14,
+    "notes": null,
+    "status": "sent"
+  },
+  {
+    "quote_id": "q-1771033206090",
+    "public_link_slug": "90e8a9ac60e3",
+    "created_at": "2026-02-14T01:40:06.090Z",
+    "owner_user_id": "u-1771033174248",
+    "user_id": "u-1771033174248",
+    "professional": {
+      "name": "Luca Free",
+      "category": "Imbianchino",
+      "city": "Torino"
+    },
+    "client": {
+      "name": "Cliente 3",
+      "email": "c3@t.com"
+    },
+    "job_description": "Lavoro 3 tinteggiatura",
+    "pricing_preset": "standard",
+    "ai_generated": false,
+    "line_items": [
+      {
+        "description": "Tinteggiatura pareti",
+        "quantity": 1,
+        "unit_price": 300,
+        "subtotal": 300
+      }
+    ],
+    "subtotal": 300,
+    "taxes": 66,
+    "total": 366,
+    "currency": "EUR",
+    "payment_terms": "50% acconto, saldo a fine lavori",
+    "validity_days": 14,
+    "notes": null,
+    "status": "sent"
+  },
+  {
+    "quote_id": "q-1771082881826",
+    "public_link_slug": "9d03cfff5718",
+    "created_at": "2026-02-14T15:28:01.826Z",
+    "owner_user_id": "u-1771082867368",
+    "user_id": "u-1771082867368",
+    "professional": {
+      "name": "Test User",
+      "category": "Idraulico",
+      "city": "Roma"
+    },
+    "client": {
+      "name": "Mario Bianchi",
+      "email": "mario@test.com"
+    },
+    "job_description": "Sostituzione caldaia 24kW",
+    "pricing_preset": "standard",
+    "ai_generated": false,
+    "line_items": [
+      {
+        "description": "Manodopera",
+        "quantity": 1,
+        "unit_price": 350,
+        "subtotal": 350
+      },
+      {
+        "description": "Materiali",
+        "quantity": 1,
+        "unit_price": 200,
+        "subtotal": 200
+      }
+    ],
+    "subtotal": 550,
+    "taxes": 121,
+    "total": 671,
+    "currency": "EUR",
+    "payment_terms": "50% acconto",
+    "validity_days": 14,
+    "notes": null,
+    "status": "accepted"
+  },
+  {
+    "quote_id": "q-1771093234177",
+    "public_link_slug": "50b34d15ea4e",
+    "created_at": "2026-02-14T18:20:34.177Z",
+    "owner_user_id": "u-1771093176147",
+    "user_id": "u-1771093176147",
+    "professional": {
+      "name": "XNOVO SRL",
+      "category": "ddd",
+      "city": "ROMA"
+    },
+    "client": {
+      "name": "ff",
+      "email": "ff@gmail.com"
+    },
+    "job_description": "ristrutturazione casa \nparquet 40m2\n2 bagni da ristrutturare\ninstallazione 6 porte",
+    "pricing_preset": "premium",
+    "ai_generated": false,
+    "line_items": [
+      {
+        "description": "Manodopera specializzata",
+        "quantity": 1,
+        "unit_cost": 300,
+        "margin_percent": 40,
+        "unit_price": 420,
+        "subtotal": 420
+      },
+      {
+        "description": "Opere murarie e preparazione",
+        "quantity": 1,
+        "unit_cost": 600,
+        "margin_percent": 40,
+        "unit_price": 840,
+        "subtotal": 840
+      },
+      {
+        "description": "Materiali e forniture edili",
+        "quantity": 1,
+        "unit_cost": 450,
+        "margin_percent": 40,
+        "unit_price": 630,
+        "subtotal": 630
+      }
+    ],
+    "subtotal": 1890,
+    "taxes": 415.8,
+    "total": 2305.8,
+    "currency": "EUR",
+    "payment_terms": "50% acconto, saldo a fine lavori",
+    "validity_days": 14,
+    "notes": "Preventivo generato senza AI — le stime sono indicative. Configura CLAUDE_API_KEY per stime personalizzate.",
+    "status": "sent"
+  },
+  {
+    "quote_id": "q-1771242407826",
+    "public_link_slug": "18cde62053a4",
+    "created_at": "2026-02-16T11:46:47.827Z",
+    "owner_user_id": "u-1771242124707",
+    "user_id": "u-1771242124707",
+    "professional": {
+      "name": "dd",
+      "category": "Elettricista",
+      "city": "milano"
+    },
+    "client": {
+      "name": "ff",
+      "email": "dndnd@gmail.com"
+    },
+    "job_description": "35m2 parquet\n1 bagno ristrutturato\n10 m2 gres applicati\ninstallazione doccia x2",
+    "pricing_preset": "standard",
+    "ai_generated": false,
+    "line_items": [
+      {
+        "description": "Manodopera specializzata",
+        "quantity": 1,
+        "unit_cost": 200,
+        "margin_percent": 30,
+        "unit_price": 260,
+        "subtotal": 260
+      },
+      {
+        "description": "Rimozione sanitari esistenti",
+        "quantity": 1,
+        "unit_cost": 120,
+        "margin_percent": 30,
+        "unit_price": 156,
+        "subtotal": 156
+      },
+      {
+        "description": "Fornitura e posa sanitari",
+        "quantity": 1,
+        "unit_cost": 450,
+        "margin_percent": 30,
+        "unit_price": 585,
+        "subtotal": 585
+      },
+      {
+        "description": "Rubinetteria e miscelatori",
+        "quantity": 1,
+        "unit_cost": 180,
+        "margin_percent": 30,
+        "unit_price": 234,
+        "subtotal": 234
+      },
+      {
+        "description": "Piatto doccia e box doccia",
+        "quantity": 1,
+        "unit_cost": 380,
+        "margin_percent": 30,
+        "unit_price": 494,
+        "subtotal": 494
+      },
+      {
+        "description": "Colonna doccia termostatica",
+        "quantity": 1,
+        "unit_cost": 220,
+        "margin_percent": 30,
+        "unit_price": 286,
+        "subtotal": 286
+      }
+    ],
+    "subtotal": 2015,
+    "taxes": 443.3,
+    "total": 2458.3,
+    "currency": "EUR",
+    "payment_terms": "50% acconto, saldo a fine lavori",
+    "validity_days": 14,
+    "notes": "Preventivo generato senza AI — le stime sono indicative. Configura CLAUDE_API_KEY per stime personalizzate.",
+    "status": "sent"
+  },
+  {
+    "quote_id": "q-1771243079008",
+    "public_link_slug": "0b75b28406a7",
+    "created_at": "2026-02-16T11:57:59.008Z",
+    "owner_user_id": "u-1771242124707",
+    "user_id": "u-1771242124707",
+    "professional": {
+      "name": "dd",
+      "category": "Elettricista",
+      "city": "milano"
+    },
+    "client": {
+      "name": "edd",
+      "email": "mdmd@gmail.com"
+    },
+    "job_description": "water 2",
+    "pricing_preset": "standard",
+    "ai_generated": false,
+    "line_items": [
+      {
+        "description": "Manodopera — water",
+        "quantity": 1,
+        "unit_cost": 250,
+        "margin_percent": 30,
+        "unit_price": 325,
+        "subtotal": 325
+      },
+      {
+        "description": "Materiali e forniture",
+        "quantity": 1,
+        "unit_cost": 150,
+        "margin_percent": 30,
+        "unit_price": 195,
+        "subtotal": 195
+      },
+      {
+        "description": "Trasporto e movimentazione",
+        "quantity": 1,
+        "unit_cost": 80,
+        "margin_percent": 30,
+        "unit_price": 104,
+        "subtotal": 104
+      },
+      {
+        "description": "Smaltimento e pulizia finale",
+        "quantity": 1,
+        "unit_cost": 60,
+        "margin_percent": 30,
+        "unit_price": 78,
+        "subtotal": 78
+      }
+    ],
+    "subtotal": 702,
+    "taxes": 154.44,
+    "total": 856.44,
+    "currency": "EUR",
+    "payment_terms": "50% acconto, saldo a fine lavori",
+    "validity_days": 14,
+    "notes": "Preventivo generato senza AI — le stime sono indicative. Configura CLAUDE_API_KEY per stime personalizzate.",
+    "status": "sent"
+  }
+]

@@ -1,0 +1,60 @@
+{
+  "categories": [
+    {
+      "group": "Artigiani",
+      "items": [
+        "idraulico",
+        "elettricista",
+        "muratore",
+        "falegname",
+        "imbianchino",
+        "fabbro",
+        "piastrellista",
+        "giardiniere",
+        "serramentista"
+      ]
+    },
+    {
+      "group": "Tecnici",
+      "items": [
+        "geometra",
+        "ingegnere",
+        "architetto",
+        "perito industriale",
+        "tecnico informatico"
+      ]
+    },
+    {
+      "group": "Consulenti",
+      "items": [
+        "avvocato",
+        "commercialista",
+        "consulente aziendale",
+        "consulente IT",
+        "consulente del lavoro",
+        "notaio"
+      ]
+    },
+    {
+      "group": "Sanitario",
+      "items": [
+        "medico",
+        "odontoiatra",
+        "psicologo",
+        "fisioterapista",
+        "veterinario"
+      ]
+    },
+    {
+      "group": "Digital & Creativi",
+      "items": [
+        "grafico",
+        "fotografo",
+        "web designer",
+        "videomaker",
+        "traduttore",
+        "copywriter"
+      ]
+    }
+  ]
+}
