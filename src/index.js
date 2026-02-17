@@ -15,21 +15,19 @@ const requireAuth = require("./middleware/requireAuth");
 
 const app = express();
 
-/**
- * ⚠️ STRIPE WEBHOOK
- * Deve ricevere RAW BODY prima di express.json()
- */
+// ─── HEALTH CHECK — nessun middleware, prima di tutto ───
+app.get("/health", (_req, res) => {
+  res.status(200).json({ status: "ok", env: process.env.NODE_ENV || "development" });
+});
+
+// ─── Stripe webhook: raw body PRIMA di express.json() ───
 app.use("/stripe/webhook", express.raw({ type: "application/json" }));
 
-/**
- * Parser standard
- */
+// ─── Parser ───
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
-/**
- * Sessioni
- */
+// ─── Sessioni ───
 app.use(
   session({
     secret: process.env.SESSION_SECRET || "preventivo-ai-secret",
@@ -37,80 +35,34 @@ app.use(
     saveUninitialized: false,
     cookie: {
       maxAge: 24 * 60 * 60 * 1000,
-      secure: false, // true solo con HTTPS custom domain
+      secure: false,
     },
   })
 );
 
-/**
- * HEALTH CHECK (Render)
- */
-app.get("/health", (req, res) => {
-  res.status(200).json({
-    status: "ok",
-    env: process.env.NODE_ENV || "development",
-  });
-});
-
-/**
- * ROOT
- */
+// ─── Root ───
 app.get("/", (req, res) => {
-  if (req.session?.userId) {
-    return res.redirect("/dashboard");
-  }
-  return res.redirect("/auth/login");
+  if (req.session?.userId) return res.redirect("/dashboard");
+  res.redirect("/auth/login");
 });
 
-/**
- * AUTH (pubblico)
- */
+// ─── Pubbliche ───
 app.use("/auth", authRoute);
-
-/**
- * STRIPE
- * - /stripe/checkout → protetto
- * - /stripe/webhook → pubblico
- */
 app.use("/stripe", stripeRoute);
+app.use("/q", quoteRoute);
 
-/**
- * API PROTETTE
- */
+// ─── Protette ───
 app.use("/api/generate-quote", requireAuth, generateRoute);
 app.use("/api/quotes", requireAuth, quotesRoute);
-
-/**
- * DASHBOARD
- */
 app.use("/dashboard", requireAuth, dashboardRoute);
-
-/**
- * PREVENTIVI
- */
 app.use("/quotes", requireAuth, require("./routes/newQuote"));
-app.use("/q", quoteRoute); // link pubblico
-
-/**
- * PROFILO / PIANI / PREZZI
- */
 app.use("/profile", requireAuth, profileRoute);
 app.use("/upgrade", requireAuth, upgradeRoute);
 app.use("/settings/prices", requireAuth, pricesRoute);
+app.post("/ai/suggest-prices", requireAuth, pricesRoute.suggestPricesHandler);
 
-/**
- * AI suggerimenti prezzi
- */
-app.post(
-  "/ai/suggest-prices",
-  requireAuth,
-  pricesRoute.suggestPricesHandler
-);
-
-/**
- * START SERVER
- */
+// ─── Start ───
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {
-  console.log(`🚀 Preventivo AI server running on port ${PORT}`);
+  console.log(`Preventivo AI running | port=${PORT} | env=${process.env.NODE_ENV || "development"}`);
 });
