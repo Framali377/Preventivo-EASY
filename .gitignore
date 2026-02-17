@@ -8,3 +8,4 @@ node_modules/
 
 # env
 .env
+stripe.keys.local.json

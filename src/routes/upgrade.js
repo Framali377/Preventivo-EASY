@@ -3,6 +3,7 @@ const express = require("express");
 const router = express.Router();
 const { getUserById } = require("../utils/storage");
 const { page, esc } = require("../utils/layout");
+const { getActiveSubscriberCount, EARLY_BIRD_LIMIT, isEarlyBirdAvailable } = require("../utils/stripe");
 
 const FREE_QUOTE_LIMIT = Number(process.env.FREE_QUOTE_LIMIT) || 3;
 
@@ -13,6 +14,8 @@ router.get("/", (req, res) => {
   const currentPlan = user.plan || "free";
   const isActive = user.subscription_status === "active";
   const credits = user.credits || 0;
+  const earlyAvailable = isEarlyBirdAvailable();
+  const earlyRemaining = Math.max(0, EARLY_BIRD_LIMIT - getActiveSubscriberCount());
 
   function planLabel(plan) {
     if (plan === "early") return "Early Bird";
@@ -102,11 +105,11 @@ router.get("/", (req, res) => {
       </div>
 
       <!-- EARLY BIRD -->
-      <div class="plan-card${currentPlan === "early" && isActive ? " current" : " highlight"}">
+      <div class="plan-card${currentPlan === "early" && isActive ? " current" : earlyAvailable ? " highlight" : ""}">
         ${currentPlan === "early" && isActive ? '<span class="current-label">Piano attivo</span>' : ""}
         <div class="plan-name">Early Bird</div>
         <div class="plan-price">5 &euro; <span>/ mese</span></div>
-        <div class="plan-desc">Prezzo lancio limitato</div>
+        <div class="plan-desc">${earlyAvailable ? `Solo per i primi 100 &mdash; restano <strong>${earlyRemaining}</strong> posti` : "Posti esauriti"}</div>
         <ul class="plan-features">
           <li>Preventivi illimitati</li>
           <li>Generazione AI avanzata</li>
@@ -117,7 +120,9 @@ router.get("/", (req, res) => {
         </ul>
         ${currentPlan === "early" && isActive
           ? '<button class="plan-cta plan-cta-current" disabled>Piano attuale</button>'
-          : '<button class="plan-cta plan-cta-upgrade" onclick="checkout(\'early\')">Scegli Early Bird</button>'}
+          : earlyAvailable
+            ? '<button class="plan-cta plan-cta-upgrade" onclick="checkout(\'early\')">Scegli Early Bird</button>'
+            : '<button class="plan-cta plan-cta-current" disabled>Esaurito</button>'}
       </div>
 
       <!-- STANDARD -->
