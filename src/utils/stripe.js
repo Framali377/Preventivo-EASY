@@ -78,12 +78,22 @@ function isEarlyBirdAvailable() {
   return getActiveSubscriberCount() < EARLY_BIRD_LIMIT;
 }
 
-async function createCheckoutSession(userId, priceType, baseUrl) {
+/**
+ * Costruisce baseUrl rispettando X-Forwarded-Proto (Render/proxy).
+ */
+function resolveBaseUrl(req) {
+  const proto = req.get("x-forwarded-proto") || req.protocol;
+  return `${proto}://${req.get("host")}`;
+}
+
+async function createCheckoutSession(userId, priceType, req) {
   const user = getUserById(userId);
   if (!user) throw new Error("Utente non trovato");
 
+  const originalType = priceType;
   if (priceType === "early" && !isEarlyBirdAvailable()) {
     priceType = "standard";
+    console.log(`[Stripe] Early Bird esaurito, fallback standard per utente ${userId}`);
   }
 
   const config = PRICES[priceType];
@@ -98,9 +108,11 @@ async function createCheckoutSession(userId, priceType, baseUrl) {
     });
     customerId = customer.id;
     updateUser(userId, { stripe_customer_id: customerId });
+    console.log(`[Stripe] Nuovo customer ${customerId} per utente ${userId}`);
   }
 
-  return stripe.checkout.sessions.create({
+  const baseUrl = resolveBaseUrl(req);
+  const session = await stripe.checkout.sessions.create({
     customer: customerId,
     mode: config.mode,
     line_items: [{ price_data: config.price_data, quantity: 1 }],
@@ -108,6 +120,9 @@ async function createCheckoutSession(userId, priceType, baseUrl) {
     cancel_url: `${baseUrl}/upgrade`,
     metadata: { user_id: userId, price_type: priceType }
   });
+
+  console.log(`[Stripe] Checkout creato | session=${session.id} | user=${userId} | plan=${priceType} | amount=${config.price_data.unit_amount}`);
+  return { session, appliedType: priceType, wasFallback: originalType !== priceType };
 }
 
 module.exports = {

@@ -19,18 +19,15 @@ router.post("/checkout", requireAuth, async (req, res) => {
       return res.status(400).json({ success: false, error: "Tipo prezzo non valido" });
     }
 
-    // Se early non disponibile, notifica il client del fallback
-    let fallback = false;
-    if (priceType === "early" && !isEarlyBirdAvailable()) {
-      priceType = "standard";
-      fallback = true;
-    }
+    const { session, appliedType, wasFallback } = await createCheckoutSession(
+      req.session.userId,
+      priceType,
+      req
+    );
 
-    const baseUrl = `${req.protocol}://${req.get("host")}`;
-    const session = await createCheckoutSession(req.session.userId, priceType, baseUrl);
-    res.json({ success: true, url: session.url, fallback });
+    res.json({ success: true, url: session.url, fallback: wasFallback, appliedType });
   } catch (err) {
-    console.error("[Stripe] Errore checkout:", err.message);
+    console.error(`[Stripe] Checkout fallito | user=${req.session.userId} | err=${err.message}`);
     res.status(500).json({ success: false, error: "Errore creazione sessione di pagamento" });
   }
 });
@@ -58,17 +55,21 @@ router.get("/success", requireAuth, async (req, res) => {
   res.send(page({ title: "Pagamento completato", user, content, extraCss, script }));
 });
 
+// ─── Trova utente per stripe_customer_id ───
+function findUserByCustomerId(customerId) {
+  return loadUsers().find(u => u.stripe_customer_id === customerId) || null;
+}
+
 // ─── POST /stripe/webhook ───
 router.post("/webhook", async (req, res) => {
-  // Verifica firma OBBLIGATORIA
   if (!WEBHOOK_SECRET) {
-    console.error("[Stripe Webhook] STRIPE_WEBHOOK_SECRET mancante nel file chiavi");
+    console.error("[Stripe Webhook] STRIPE_WEBHOOK_SECRET mancante");
     return res.status(500).json({ error: "Webhook non configurato" });
   }
 
   const sig = req.headers["stripe-signature"];
   if (!sig) {
-    console.error("[Stripe Webhook] Header stripe-signature mancante");
+    console.error("[Stripe Webhook] Header stripe-signature assente");
     return res.status(400).json({ error: "Firma mancante" });
   }
 
@@ -76,76 +77,91 @@ router.post("/webhook", async (req, res) => {
   try {
     event = stripe.webhooks.constructEvent(req.body, sig, WEBHOOK_SECRET);
   } catch (err) {
-    console.error("[Stripe Webhook] Firma non valida:", err.message);
-    return res.status(400).json({ error: `Firma non valida: ${err.message}` });
+    console.error(`[Stripe Webhook] Firma rifiutata | err=${err.message}`);
+    return res.status(400).json({ error: "Firma non valida" });
   }
 
-  // ─── Gestione eventi ───
+  const eventId = event.id;
+  const eventType = event.type;
+
   try {
-    switch (event.type) {
+    switch (eventType) {
+      // ─── Checkout completato ───
       case "checkout.session.completed": {
         const session = event.data.object;
         const userId = session.metadata?.user_id;
         const priceType = session.metadata?.price_type;
+
         if (!userId) {
-          console.warn("[Stripe Webhook] checkout.session.completed senza user_id");
+          console.warn(`[Stripe Webhook] ${eventId} | checkout senza user_id, ignorato`);
           break;
         }
 
         if (priceType === "pay_per_use") {
           const user = getUserById(userId);
-          const currentCredits = (user && user.credits) || 0;
+          const prev = (user && user.credits) || 0;
           updateUser(userId, {
             plan: user.plan === "free" ? "pay_per_use" : user.plan,
-            credits: currentCredits + 1
+            credits: prev + 1
           });
-          console.log(`[Stripe] +1 credito pay-per-use → utente ${userId} (totale: ${currentCredits + 1})`);
+          console.log(`[Stripe Webhook] ${eventId} | CREDITO +1 | user=${userId} | crediti=${prev}→${prev + 1}`);
         } else {
-          // early o standard
           updateUser(userId, {
             plan: priceType,
             subscription_id: session.subscription || null,
             subscription_status: "active"
           });
-          console.log(`[Stripe] Piano "${priceType}" attivato → utente ${userId}`);
+          console.log(`[Stripe Webhook] ${eventId} | PIANO ATTIVATO | user=${userId} | plan=${priceType} | sub=${session.subscription}`);
         }
         break;
       }
 
+      // ─── Rinnovo confermato ───
       case "invoice.paid": {
         const invoice = event.data.object;
         if (!invoice.subscription) break;
-        const customerId = invoice.customer;
-        const users = loadUsers();
-        const user = users.find(u => u.stripe_customer_id === customerId);
+        const user = findUserByCustomerId(invoice.customer);
         if (user) {
           updateUser(user.id, { subscription_status: "active" });
-          console.log(`[Stripe] Rinnovo confermato → utente ${user.id}`);
+          console.log(`[Stripe Webhook] ${eventId} | RINNOVO OK | user=${user.id} | sub=${invoice.subscription} | amount=${invoice.amount_paid}`);
+        } else {
+          console.warn(`[Stripe Webhook] ${eventId} | invoice.paid per customer sconosciuto ${invoice.customer}`);
         }
         break;
       }
 
+      // ─── Abbonamento cancellato ───
       case "customer.subscription.deleted": {
-        const subscription = event.data.object;
-        const customerId = subscription.customer;
-        const users = loadUsers();
-        const user = users.find(u => u.stripe_customer_id === customerId);
+        const sub = event.data.object;
+        const user = findUserByCustomerId(sub.customer);
         if (user) {
+          const oldPlan = user.plan;
           updateUser(user.id, {
             plan: "free",
             subscription_id: null,
             subscription_status: "canceled"
           });
-          console.log(`[Stripe] Abbonamento cancellato → utente ${user.id}, downgrade a free`);
+          console.log(`[Stripe Webhook] ${eventId} | CANCELLAZIONE | user=${user.id} | ${oldPlan}→free`);
+        } else {
+          console.warn(`[Stripe Webhook] ${eventId} | subscription.deleted per customer sconosciuto ${sub.customer}`);
         }
         break;
       }
 
+      // ─── Pagamento fallito ───
+      case "invoice.payment_failed": {
+        const invoice = event.data.object;
+        const user = findUserByCustomerId(invoice.customer);
+        console.error(`[Stripe Webhook] ${eventId} | PAGAMENTO FALLITO | customer=${invoice.customer} | user=${user?.id || "?"} | sub=${invoice.subscription} | attempt=${invoice.attempt_count}`);
+        break;
+      }
+
       default:
-        console.log(`[Stripe Webhook] Evento ignorato: ${event.type}`);
+        // Non loggare eventi non gestiti per evitare rumore
+        break;
     }
   } catch (err) {
-    console.error("[Stripe Webhook] Errore gestione evento:", err.message);
+    console.error(`[Stripe Webhook] ${eventId} | ERRORE INTERNO | type=${eventType} | err=${err.message}`);
   }
 
   res.json({ received: true });
