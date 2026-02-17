@@ -6,31 +6,31 @@ const { getUserById, updateUser, loadUsers } = require("./storage");
 
 const IS_PROD = process.env.NODE_ENV === "production";
 
-// ─── Caricamento chiavi Stripe ───
+// ─── Caricamento chiavi Stripe (graceful — non blocca il server) ───
 function loadStripeConfig() {
   if (IS_PROD) {
-    if (!process.env.STRIPE_SECRET_KEY || !process.env.STRIPE_WEBHOOK_SECRET) {
-      throw new Error("Stripe env vars mancanti in produzione");
+    if (!process.env.STRIPE_SECRET_KEY) {
+      console.warn("[Stripe] STRIPE_SECRET_KEY mancante in produzione — Stripe disabilitato");
+      return null;
     }
     return {
       STRIPE_SECRET_KEY: process.env.STRIPE_SECRET_KEY,
-      STRIPE_WEBHOOK_SECRET: process.env.STRIPE_WEBHOOK_SECRET
+      STRIPE_WEBHOOK_SECRET: process.env.STRIPE_WEBHOOK_SECRET || ""
     };
   }
 
   // Localhost: file locale
   const KEYS_PATH = path.join(__dirname, "..", "..", "stripe.keys.local.json");
   if (!fs.existsSync(KEYS_PATH)) {
-    throw new Error(
-      "File stripe.keys.local.json mancante in locale"
-    );
+    console.warn("[Stripe] stripe.keys.local.json mancante — Stripe disabilitato");
+    return null;
   }
   return JSON.parse(fs.readFileSync(KEYS_PATH, "utf-8"));
 }
 
 const keys = loadStripeConfig();
-const stripe = new Stripe(keys.STRIPE_SECRET_KEY);
-const WEBHOOK_SECRET = keys.STRIPE_WEBHOOK_SECRET;
+const stripe = keys ? new Stripe(keys.STRIPE_SECRET_KEY) : null;
+const WEBHOOK_SECRET = keys ? keys.STRIPE_WEBHOOK_SECRET : "";
 
 // ─── Early Bird ───
 const EARLY_BIRD_LIMIT = 100;
@@ -87,6 +87,7 @@ function resolveBaseUrl(req) {
 }
 
 async function createCheckoutSession(userId, priceType, req) {
+  if (!stripe) throw new Error("Stripe non configurato");
   const user = getUserById(userId);
   if (!user) throw new Error("Utente non trovato");
 
@@ -117,7 +118,7 @@ async function createCheckoutSession(userId, priceType, req) {
     mode: config.mode,
     line_items: [{ price_data: config.price_data, quantity: 1 }],
     success_url: `${baseUrl}/stripe/success?session_id={CHECKOUT_SESSION_ID}`,
-    cancel_url: `${baseUrl}/upgrade`,
+    cancel_url: `${baseUrl}/stripe/cancel`,
     metadata: { user_id: userId, price_type: priceType }
   });
 

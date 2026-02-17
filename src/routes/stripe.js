@@ -36,23 +36,88 @@ router.post("/checkout", requireAuth, async (req, res) => {
 router.get("/success", requireAuth, async (req, res) => {
   const user = getUserById(req.session.userId);
 
+  // Recupera dettagli sessione Stripe per mostrare cosa è stato acquistato
+  let purchaseInfo = { title: "Pagamento completato!", detail: "Il tuo piano è stato aggiornato con successo." };
+  const sessionId = req.query.session_id;
+  if (sessionId) {
+    try {
+      const stripeSession = await stripe.checkout.sessions.retrieve(sessionId, { expand: ["line_items"] });
+      const priceType = stripeSession.metadata?.price_type;
+      const amount = stripeSession.amount_total;
+      const formattedAmount = amount ? (amount / 100).toFixed(2).replace(".", ",") + " €" : "";
+
+      if (priceType === "pay_per_use") {
+        purchaseInfo = {
+          title: "Credito acquistato!",
+          detail: `Hai acquistato 1 credito preventivo per ${formattedAmount}. Puoi generare subito un nuovo preventivo.`,
+          cta: { label: "Genera preventivo", href: "/quotes/new" }
+        };
+      } else if (priceType === "early") {
+        purchaseInfo = {
+          title: "Benvenuto Early Bird!",
+          detail: `Abbonamento attivato a ${formattedAmount}/mese. Hai accesso a preventivi illimitati e tutte le funzionalità premium.`,
+          cta: { label: "Vai alla Dashboard", href: "/dashboard" }
+        };
+      } else if (priceType === "standard") {
+        purchaseInfo = {
+          title: "Piano Standard attivato!",
+          detail: `Abbonamento attivato a ${formattedAmount}/mese. Hai accesso a preventivi illimitati e tutte le funzionalità premium.`,
+          cta: { label: "Vai alla Dashboard", href: "/dashboard" }
+        };
+      }
+    } catch (err) {
+      console.error(`[Stripe] Errore recupero sessione ${sessionId}: ${err.message}`);
+    }
+  }
+
   const extraCss = `
-    .success-wrap{max-width:500px;text-align:center;padding-top:60px}
-    .success-icon{font-size:3rem;margin-bottom:16px;color:#22c55e}
-    .success-title{font-size:1.3rem;font-weight:700;margin-bottom:8px}
-    .success-text{color:#6b7280;font-size:.9rem;margin-bottom:24px}
+    .success-wrap{max-width:520px;text-align:center;padding-top:60px}
+    .success-icon{width:64px;height:64px;border-radius:50%;background:#dcfce7;display:flex;align-items:center;justify-content:center;margin:0 auto 20px;font-size:2rem;color:#16a34a}
+    .success-title{font-size:1.3rem;font-weight:700;margin-bottom:10px;color:#1e1e2d}
+    .success-text{color:#6b7280;font-size:.9rem;margin-bottom:28px;line-height:1.6}
+    .success-btn{display:inline-block;background:#2563eb;color:#fff;padding:12px 32px;border-radius:8px;font-size:.9rem;font-weight:500;text-decoration:none;transition:background .15s}
+    .success-btn:hover{background:#1d4ed8}
+    .success-sub{font-size:.78rem;color:#9ca3af;margin-top:16px}
   `;
+
+  const ctaHref = purchaseInfo.cta ? purchaseInfo.cta.href : "/dashboard";
+  const ctaLabel = purchaseInfo.cta ? purchaseInfo.cta.label : "Vai alla Dashboard";
 
   const content = `
   <div class="wrap success-wrap">
     <div class="success-icon">&#10003;</div>
-    <div class="success-title">Pagamento completato!</div>
-    <p class="success-text">Il tuo piano è stato aggiornato con successo. Verrai reindirizzato alla dashboard tra pochi secondi.</p>
-    <a href="/dashboard" class="btn btn-primary">Vai alla Dashboard</a>
+    <div class="success-title">${purchaseInfo.title}</div>
+    <p class="success-text">${purchaseInfo.detail}</p>
+    <a href="${ctaHref}" class="success-btn">${ctaLabel}</a>
+    <div class="success-sub">Verrai reindirizzato automaticamente tra 5 secondi</div>
   </div>`;
 
-  const script = `setTimeout(function(){ window.location.href = '/dashboard'; }, 4000);`;
+  const script = `setTimeout(function(){ window.location.href = '${ctaHref}'; }, 5000);`;
   res.send(page({ title: "Pagamento completato", user, content, extraCss, script }));
+});
+
+// ─── GET /stripe/cancel ───
+router.get("/cancel", requireAuth, (req, res) => {
+  const user = getUserById(req.session.userId);
+
+  const extraCss = `
+    .cancel-wrap{max-width:500px;text-align:center;padding-top:60px}
+    .cancel-icon{width:64px;height:64px;border-radius:50%;background:#fef3c7;display:flex;align-items:center;justify-content:center;margin:0 auto 20px;font-size:2rem;color:#d97706}
+    .cancel-title{font-size:1.2rem;font-weight:700;margin-bottom:10px;color:#1e1e2d}
+    .cancel-text{color:#6b7280;font-size:.9rem;margin-bottom:28px;line-height:1.6}
+    .cancel-btn{display:inline-block;background:#2563eb;color:#fff;padding:12px 32px;border-radius:8px;font-size:.9rem;font-weight:500;text-decoration:none;transition:background .15s}
+    .cancel-btn:hover{background:#1d4ed8}
+  `;
+
+  const content = `
+  <div class="wrap cancel-wrap">
+    <div class="cancel-icon">&#8617;</div>
+    <div class="cancel-title">Pagamento annullato</div>
+    <p class="cancel-text">Non è stato addebitato nulla. Puoi tornare alla pagina upgrade per scegliere un piano quando vuoi.</p>
+    <a href="/upgrade" class="cancel-btn">Torna ai piani</a>
+  </div>`;
+
+  res.send(page({ title: "Pagamento annullato", user, content, extraCss }));
 });
 
 // ─── Trova utente per stripe_customer_id ───
