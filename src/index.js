@@ -60,6 +60,7 @@ app.use("/profile", requireAuth, profileRoute);
 app.use("/upgrade", requireAuth, upgradeRoute);
 app.use("/settings/prices", requireAuth, pricesRoute);
 app.post("/ai/suggest-prices", requireAuth, pricesRoute.suggestPricesHandler);
+app.use("/admin", require("./routes/admin"));
 
 // ─── Start ───
 const PORT = process.env.PORT || 3000;
