@@ -4,27 +4,38 @@ const path = require("path");
 const Stripe = require("stripe");
 const { getUserById, updateUser, loadUsers } = require("./storage");
 
-// ─── Carica chiavi da file locale (mai committato) ───
-const KEYS_PATH = path.join(__dirname, "..", "..", "stripe.keys.local.json");
+const IS_PROD = process.env.NODE_ENV === "production";
 
-function loadStripeKeys() {
+// ─── Caricamento chiavi Stripe ───
+function loadStripeConfig() {
+  if (IS_PROD) {
+    if (!process.env.STRIPE_SECRET_KEY || !process.env.STRIPE_WEBHOOK_SECRET) {
+      throw new Error("Stripe env vars mancanti in produzione");
+    }
+    return {
+      STRIPE_SECRET_KEY: process.env.STRIPE_SECRET_KEY,
+      STRIPE_WEBHOOK_SECRET: process.env.STRIPE_WEBHOOK_SECRET
+    };
+  }
+
+  // Localhost: file locale
+  const KEYS_PATH = path.join(__dirname, "..", "..", "stripe.keys.local.json");
   if (!fs.existsSync(KEYS_PATH)) {
     throw new Error(
-      `File chiavi Stripe non trovato: ${KEYS_PATH}\n` +
-      "Crea stripe.keys.local.json con STRIPE_SECRET_KEY, STRIPE_PUBLISHABLE_KEY, STRIPE_WEBHOOK_SECRET"
+      "File stripe.keys.local.json mancante in locale"
     );
   }
   return JSON.parse(fs.readFileSync(KEYS_PATH, "utf-8"));
 }
 
-const keys = loadStripeKeys();
+const keys = loadStripeConfig();
 const stripe = new Stripe(keys.STRIPE_SECRET_KEY);
 const WEBHOOK_SECRET = keys.STRIPE_WEBHOOK_SECRET;
 
-// ─── Soglia Early Bird ───
+// ─── Early Bird ───
 const EARLY_BIRD_LIMIT = 100;
 
-// ─── Definizioni prezzi (inline price_data) ───
+// ─── Prezzi ───
 const PRICES = {
   early: {
     mode: "subscription",
@@ -54,32 +65,23 @@ const PRICES = {
   }
 };
 
-/**
- * Conta gli abbonati attivi (early + standard) per la regola dei 100.
- */
 function getActiveSubscriberCount() {
   const users = loadUsers();
   return users.filter(
-    u => (u.plan === "early" || u.plan === "standard") && u.subscription_status === "active"
+    u =>
+      (u.plan === "early" || u.plan === "standard") &&
+      u.subscription_status === "active"
   ).length;
 }
 
-/**
- * Determina se Early Bird è ancora disponibile.
- */
 function isEarlyBirdAvailable() {
   return getActiveSubscriberCount() < EARLY_BIRD_LIMIT;
 }
 
-/**
- * Crea una Checkout Session Stripe.
- * Se priceType è "early" ma il limite è raggiunto, forza "standard".
- */
 async function createCheckoutSession(userId, priceType, baseUrl) {
   const user = getUserById(userId);
   if (!user) throw new Error("Utente non trovato");
 
-  // Regola Early Bird: se esaurito, scala a standard
   if (priceType === "early" && !isEarlyBirdAvailable()) {
     priceType = "standard";
   }
@@ -87,7 +89,6 @@ async function createCheckoutSession(userId, priceType, baseUrl) {
   const config = PRICES[priceType];
   if (!config) throw new Error("Tipo prezzo non valido");
 
-  // Crea o riusa Stripe Customer
   let customerId = user.stripe_customer_id;
   if (!customerId) {
     const customer = await stripe.customers.create({
@@ -99,16 +100,14 @@ async function createCheckoutSession(userId, priceType, baseUrl) {
     updateUser(userId, { stripe_customer_id: customerId });
   }
 
-  const sessionParams = {
+  return stripe.checkout.sessions.create({
     customer: customerId,
     mode: config.mode,
     line_items: [{ price_data: config.price_data, quantity: 1 }],
     success_url: `${baseUrl}/stripe/success?session_id={CHECKOUT_SESSION_ID}`,
     cancel_url: `${baseUrl}/upgrade`,
     metadata: { user_id: userId, price_type: priceType }
-  };
-
-  return stripe.checkout.sessions.create(sessionParams);
+  });
 }
 
 module.exports = {
