@@ -9,9 +9,19 @@ function fmt(n) {
   return Number(n).toLocaleString("it-IT", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 }
 
+function planInfo(user) {
+  if (!user) return { label: "Free", cls: "plan-free", icon: "" };
+  const p = user.plan || "free";
+  const active = user.subscription_status === "active";
+  if (p === "early" && active) return { label: "Early Bird", cls: "plan-early", icon: "&#9889;" };
+  if (p === "standard" && active) return { label: "Standard", cls: "plan-standard", icon: "&#9733;" };
+  if (p === "pay_per_use" || (user.credits && user.credits > 0)) return { label: "Pay-per-use", cls: "plan-ppu", icon: "&#9889;" };
+  return { label: "Free", cls: "plan-free", icon: "" };
+}
+
 const SHARED_CSS = `
     *{margin:0;padding:0;box-sizing:border-box}
-    body{font-family:'Inter',-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Oxygen,Ubuntu,Cantarell,sans-serif;background:#f0f2f5;color:#1e1e2d;min-height:100vh;font-size:14px;line-height:1.6}
+    body{font-family:'Inter',-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Oxygen,Ubuntu,Cantarell,sans-serif;background:#f0f2f5;color:#1e1e2d;min-height:100vh;font-size:14px;line-height:1.6;padding-top:56px}
 
     /* ── Custom scrollbar ── */
     ::-webkit-scrollbar{width:6px;height:6px}
@@ -19,8 +29,8 @@ const SHARED_CSS = `
     ::-webkit-scrollbar-thumb{background:#c1c5cd;border-radius:3px}
     ::-webkit-scrollbar-thumb:hover{background:#a0a5b0}
 
-    /* ── Topbar ── */
-    .topbar{background:linear-gradient(135deg,#1a1a2e 0%,#16213e 100%);color:#fff;padding:0 32px;height:56px;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:12px;box-shadow:0 2px 12px rgba(0,0,0,.15)}
+    /* ── Topbar (sticky) ── */
+    .topbar{position:fixed;top:0;left:0;right:0;z-index:100;background:linear-gradient(135deg,#1a1a2e 0%,#16213e 100%);color:#fff;padding:0 32px;height:56px;display:flex;justify-content:space-between;align-items:center;gap:12px;box-shadow:0 2px 12px rgba(0,0,0,.15)}
     .topbar h1{font-size:1rem;font-weight:700;letter-spacing:-.02em}
     .topbar .logo{color:#fff;text-decoration:none;display:flex;align-items:center;gap:8px}
     .topbar .logo-icon{width:28px;height:28px;background:linear-gradient(135deg,#2563eb,#7c3aed);border-radius:7px;display:flex;align-items:center;justify-content:center;font-size:.85rem;font-weight:700}
@@ -28,12 +38,20 @@ const SHARED_CSS = `
     .topbar nav a{color:rgba(255,255,255,.6);text-decoration:none;font-size:.82rem;padding:7px 14px;border-radius:6px;transition:all .2s;font-weight:500}
     .topbar nav a:hover{color:#fff;background:rgba(255,255,255,.1)}
     .topbar nav a.active{color:#fff;background:rgba(37,99,235,.4)}
+    .topbar .user-area{display:flex;align-items:center;gap:12px}
     .topbar .user-info{font-size:.8rem;color:rgba(255,255,255,.55);font-weight:500}
     .topbar .logout-btn{background:transparent;color:rgba(255,255,255,.6);border:1px solid rgba(255,255,255,.18);padding:5px 16px;border-radius:6px;cursor:pointer;font-size:.78rem;transition:all .2s;font-weight:500}
     .topbar .logout-btn:hover{color:#fff;border-color:rgba(255,255,255,.4);background:rgba(255,255,255,.06)}
 
+    /* ── Plan badge (topbar) ── */
+    .topbar-plan{font-size:.68rem;font-weight:700;padding:3px 10px;border-radius:12px;letter-spacing:.04em;text-transform:uppercase}
+    .plan-free{background:rgba(255,243,205,.9);color:#856404}
+    .plan-early{background:rgba(167,243,208,.9);color:#065f46}
+    .plan-standard{background:rgba(147,197,253,.9);color:#1e40af}
+    .plan-ppu{background:rgba(233,213,255,.9);color:#6b21a8}
+
     /* ── Layout ── */
-    .wrap{max-width:960px;margin:0 auto;padding:32px 24px}
+    .wrap{max-width:1100px;margin:0 auto;padding:32px 24px}
 
     /* ── Componenti condivisi ── */
     .card{background:#fff;border-radius:12px;box-shadow:0 1px 3px rgba(0,0,0,.05),0 4px 16px rgba(0,0,0,.04);overflow:hidden;transition:box-shadow .2s}
@@ -66,9 +84,11 @@ const SHARED_CSS = `
     .c{text-align:center}
 
     /* ── Alert ── */
-    .alert{padding:12px 18px;border-radius:8px;font-size:.86rem;margin-bottom:18px}
+    .alert{padding:14px 20px;border-radius:10px;font-size:.88rem;margin-bottom:18px;display:flex;align-items:center;gap:10px}
     .alert-success{background:#ecfdf5;color:#065f46;border:1px solid #a7f3d0}
     .alert-error{background:#fef2f2;color:#991b1b;border:1px solid #fecaca}
+    .alert-warning{background:#fffbeb;color:#92400e;border:1px solid #fde68a}
+    .alert-info{background:#eff6ff;color:#1e40af;border:1px solid #bfdbfe}
 
     /* ── Stats ── */
     .stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:16px;margin-bottom:32px}
@@ -78,6 +98,10 @@ const SHARED_CSS = `
 
     .empty{text-align:center;padding:48px;color:#9ca3af;font-size:.9rem}
 
+    /* ── Progress bar ── */
+    .progress-bar{height:8px;background:#e5e7eb;border-radius:4px;overflow:hidden;margin:8px 0}
+    .progress-fill{height:100%;border-radius:4px;transition:width .4s ease}
+
     /* ── Smooth transitions ── */
     @media(prefers-reduced-motion:no-preference){
       .card,.btn,.field input,.field textarea,.field select{transition:all .2s ease}
@@ -85,7 +109,8 @@ const SHARED_CSS = `
 
     /* ── Responsive ── */
     @media(max-width:640px){
-      .topbar{padding:0 16px;height:auto;min-height:56px;flex-direction:column;padding:12px 16px;gap:8px}
+      body{padding-top:0}
+      .topbar{position:relative;height:auto;min-height:56px;flex-direction:column;padding:12px 16px;gap:8px}
       .topbar nav{flex-wrap:wrap;justify-content:center}
       .wrap{padding:20px 16px}
     }
@@ -102,6 +127,8 @@ function page({ title, user, content, extraCss, script, activePage }) {
     `<a href="${n.href}"${activePage === n.key ? ' class="active"' : ""}>${n.label}</a>`
   ).join("\n        ");
 
+  const pi = planInfo(user);
+
   const userNav = user ? `
   <div class="topbar">
     <div style="display:flex;align-items:center;gap:20px">
@@ -113,7 +140,8 @@ function page({ title, user, content, extraCss, script, activePage }) {
         ${navHtml}
       </nav>
     </div>
-    <div style="display:flex;align-items:center;gap:14px">
+    <div class="user-area">
+      <span class="topbar-plan ${pi.cls}">${pi.label}</span>
       <span class="user-info">${esc(user.name)}</span>
       <button class="logout-btn" onclick="doLogout()">Esci</button>
     </div>
@@ -146,4 +174,4 @@ function page({ title, user, content, extraCss, script, activePage }) {
 </html>`;
 }
 
-module.exports = { page, esc, fmt, SHARED_CSS };
+module.exports = { page, esc, fmt, planInfo, SHARED_CSS };

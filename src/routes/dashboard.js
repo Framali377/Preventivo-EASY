@@ -3,7 +3,7 @@ const express = require("express");
 const router = express.Router();
 const { loadQuotes, getUserById, getQuoteCountByUser } = require("../utils/storage");
 const feedback = require("../utils/feedback");
-const { page, esc, fmt } = require("../utils/layout");
+const { page, esc, fmt, planInfo } = require("../utils/layout");
 
 const FREE_QUOTE_LIMIT = Number(process.env.FREE_QUOTE_LIMIT) || 3;
 
@@ -30,15 +30,15 @@ router.get("/", (req, res) => {
     .filter(q => q.user_id === user.id)
     .sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
 
-  const planLabel = (user.plan && user.plan !== "free") ? "PRO" : "FREE";
-  const planClass = planLabel === "PRO" ? "plan-pro" : "plan-free";
-
-  // FREE limit check
-  const isFree = !user.plan || user.plan === "free";
+  const pi = planInfo(user);
+  const isFree = pi.label === "Free";
   const quoteCount = getQuoteCountByUser(user.id);
-  const limitReached = isFree && quoteCount >= FREE_QUOTE_LIMIT;
+  const credits = user.credits || 0;
+  const limitReached = isFree && credits <= 0 && quoteCount >= FREE_QUOTE_LIMIT;
+  const progressPct = isFree ? Math.min(100, Math.round((quoteCount / FREE_QUOTE_LIMIT) * 100)) : 0;
+  const progressColor = progressPct >= 100 ? "#dc2626" : progressPct >= 66 ? "#f59e0b" : "#22c55e";
 
-  // Build quote cards
+  // Quote cards
   const quoteCards = quotes.map(q => {
     const date = new Date(q.created_at).toLocaleDateString("it-IT", {
       day: "2-digit", month: "short", year: "numeric"
@@ -71,39 +71,67 @@ router.get("/", (req, res) => {
     </div>`;
   }).join("");
 
-  // CTA card: disabled if limit reached
+  // Free limit block
+  let limitBlockHtml = "";
+  if (isFree) {
+    limitBlockHtml = limitReached
+      ? `<div class="limit-block limit-reached">
+          <div class="limit-content">
+            <div class="limit-title">Hai raggiunto il limite del piano gratuito</div>
+            <p>Hai utilizzato tutti i <strong>${FREE_QUOTE_LIMIT}</strong> preventivi disponibili. Passa a un piano a pagamento per continuare a creare preventivi.</p>
+            <div class="progress-bar"><div class="progress-fill" style="width:100%;background:#dc2626"></div></div>
+            <div class="limit-count">${quoteCount} / ${FREE_QUOTE_LIMIT} preventivi utilizzati</div>
+          </div>
+          <a href="/upgrade" class="btn btn-primary">Scegli un piano</a>
+        </div>`
+      : `<div class="limit-block">
+          <div class="limit-content">
+            <div class="limit-title">Piano gratuito</div>
+            <p>Stai usando il piano Free. Hai ancora <strong>${FREE_QUOTE_LIMIT - quoteCount}</strong> preventiv${FREE_QUOTE_LIMIT - quoteCount === 1 ? "o" : "i"} disponibil${FREE_QUOTE_LIMIT - quoteCount === 1 ? "e" : "i"}.</p>
+            <div class="progress-bar"><div class="progress-fill" style="width:${progressPct}%;background:${progressColor}"></div></div>
+            <div class="limit-count">${quoteCount} / ${FREE_QUOTE_LIMIT} utilizzati</div>
+          </div>
+          <a href="/upgrade" class="btn btn-secondary" style="white-space:nowrap">Vedi piani</a>
+        </div>`;
+  }
+
+  // Credits block for pay-per-use
+  let creditsHtml = "";
+  if (credits > 0 && pi.label === "Pay-per-use") {
+    creditsHtml = `<div class="limit-block" style="border-color:#e9d5ff">
+      <div class="limit-content">
+        <div class="limit-title">Crediti pay-per-use</div>
+        <p>Hai <strong>${credits}</strong> credit${credits === 1 ? "o" : "i"} disponibil${credits === 1 ? "e" : "i"} per generare preventivi.</p>
+      </div>
+      <a href="/upgrade" class="btn btn-secondary" style="white-space:nowrap">Compra crediti</a>
+    </div>`;
+  }
+
+  // CTA
   const ctaHtml = limitReached
-    ? `<div class="cta-card cta-disabled">
-        <div>
-          <h3>Limite raggiunto</h3>
-          <p>Hai usato ${quoteCount} preventivi su ${FREE_QUOTE_LIMIT} disponibili nel piano gratuito.</p>
-        </div>
-        <a href="/upgrade" class="cta-btn" style="background:#2563eb;color:#fff">Passa a PRO</a>
-      </div>`
-    : `<div class="cta-card">
-        <div>
-          <h3>Crea un nuovo preventivo</h3>
-          <p>Descrivi il lavoro e l'AI generer&agrave; il preventivo per te${isFree ? ` &middot; ${quoteCount}/${FREE_QUOTE_LIMIT} usati` : ""}</p>
-        </div>
-        <a href="/quotes/new" class="cta-btn">+ Nuovo preventivo</a>
-      </div>`;
+    ? ""
+    : `<a href="/quotes/new" class="cta-btn-main">
+        <span class="cta-btn-icon">+</span>
+        <span>Crea nuovo preventivo</span>
+      </a>`;
 
   const extraCss = `
-    /* ── Dashboard header ── */
     .dash-header{display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:16px;margin-bottom:28px}
     .dash-header h2{font-size:1.3rem;font-weight:700}
-    .plan-badge{display:inline-block;font-size:.7rem;font-weight:700;padding:4px 12px;border-radius:20px;letter-spacing:.06em;vertical-align:middle;margin-left:10px}
-    .plan-free{background:#fff3cd;color:#856404}
-    .plan-pro{background:#d4edda;color:#155724}
+    .dash-plan{display:inline-flex;align-items:center;gap:6px;font-size:.78rem;font-weight:600;padding:5px 14px;border-radius:20px;letter-spacing:.04em;vertical-align:middle;margin-left:10px}
 
-    /* ── CTA ── */
-    .cta-card{background:#fff;border:1px solid #e5e7eb;border-radius:8px;padding:24px 28px;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:16px;margin-bottom:28px;box-shadow:0 1px 3px rgba(0,0,0,.04)}
-    .cta-card h3{font-size:1rem;font-weight:600;margin-bottom:4px;color:#1e1e2d}
-    .cta-card p{font-size:.85rem;color:#6b7280}
-    .cta-btn{background:#2563eb;color:#fff;padding:10px 24px;border-radius:6px;font-size:.88rem;font-weight:500;text-decoration:none;transition:background .15s;display:inline-block}
-    .cta-btn:hover{background:#1d4ed8}
-    .cta-disabled{background:#f9fafb;border-color:#e5e7eb}
-    .cta-btn-disabled{background:#e5e7eb;color:#9ca3af;padding:10px 24px;border-radius:6px;font-size:.88rem;font-weight:500;display:inline-block;cursor:not-allowed}
+    /* ── CTA principale ── */
+    .cta-btn-main{display:flex;align-items:center;gap:12px;background:linear-gradient(135deg,#2563eb,#1d4ed8);color:#fff;padding:16px 28px;border-radius:12px;font-size:.95rem;font-weight:600;text-decoration:none;transition:all .2s;box-shadow:0 4px 16px rgba(37,99,235,.25);margin-bottom:28px}
+    .cta-btn-main:hover{box-shadow:0 6px 24px rgba(37,99,235,.35);transform:translateY(-2px)}
+    .cta-btn-icon{width:36px;height:36px;background:rgba(255,255,255,.2);border-radius:10px;display:flex;align-items:center;justify-content:center;font-size:1.3rem;font-weight:700;flex-shrink:0}
+
+    /* ── Limit block ── */
+    .limit-block{background:#fff;border:1px solid #e5e7eb;border-radius:12px;padding:20px 24px;display:flex;justify-content:space-between;align-items:center;gap:20px;margin-bottom:24px}
+    .limit-block.limit-reached{border-color:#fecaca;background:#fef2f2}
+    .limit-content{flex:1;min-width:0}
+    .limit-title{font-size:.9rem;font-weight:700;margin-bottom:4px}
+    .limit-content p{font-size:.84rem;color:#6b7280;margin:0}
+    .limit-count{font-size:.75rem;color:#9ca3af;margin-top:2px}
 
     /* ── Quote cards ── */
     .quote-list{display:flex;flex-direction:column;gap:14px}
@@ -131,7 +159,6 @@ router.get("/", (req, res) => {
 
     .section-title{font-size:.85rem;font-weight:600;color:#888;text-transform:uppercase;letter-spacing:.06em;margin-bottom:14px}
 
-    /* ── Toast ── */
     .toast{position:fixed;bottom:24px;left:50%;transform:translateX(-50%);background:#1a1a2e;color:#fff;padding:10px 24px;border-radius:8px;font-size:.85rem;opacity:0;transition:opacity .3s;pointer-events:none;z-index:100}
     .toast.show{opacity:1}
   `;
@@ -158,11 +185,15 @@ router.get("/", (req, res) => {
   <div class="wrap">
     <!-- Header -->
     <div class="dash-header">
-      <h2>Ciao, ${esc(user.name.split(" ")[0])} <span class="plan-badge ${planClass}">${planLabel}</span></h2>
+      <h2>Ciao, ${esc(user.name.split(" ")[0])}</h2>
     </div>
 
-    <!-- CTA -->
+    <!-- CTA principale -->
     ${ctaHtml}
+
+    <!-- Limite / Crediti -->
+    ${limitBlockHtml}
+    ${creditsHtml}
 
     <!-- Stats -->
     <div class="stats">
@@ -193,7 +224,7 @@ router.get("/", (req, res) => {
       ? `<div class="card"><div class="empty-state">
           <div class="empty-icon">&#128203;</div>
           <p>Non hai ancora creato nessun preventivo.</p>
-          ${limitReached ? "" : '<a href="/quotes/new" class="btn btn-primary">Crea il primo</a>'}
+          ${limitReached ? '<a href="/upgrade" class="btn btn-primary">Scegli un piano</a>' : '<a href="/quotes/new" class="btn btn-primary">Crea il primo</a>'}
         </div></div>`
       : `<div class="quote-list">${quoteCards}</div>`}
   </div>

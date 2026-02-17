@@ -3,7 +3,7 @@ const express = require("express");
 const bcrypt = require("bcrypt");
 const router = express.Router();
 const { getUserById, updateUser } = require("../utils/storage");
-const { page, esc } = require("../utils/layout");
+const { page, esc, planInfo } = require("../utils/layout");
 
 const SALT_ROUNDS = 10;
 
@@ -11,7 +11,8 @@ router.get("/", (req, res) => {
   const user = getUserById(req.session.userId);
   if (!user) return res.redirect("/auth/login");
 
-  const planLabel = (user.plan && user.plan !== "free") ? "PRO" : "FREE";
+  const pi = planInfo(user);
+  const isFree = pi.label === "Free";
 
   const extraCss = `
     .profile-card{padding:32px}
@@ -22,9 +23,7 @@ router.get("/", (req, res) => {
     .section-title{font-size:.82rem;font-weight:600;color:#6b7280;text-transform:uppercase;letter-spacing:.04em;margin-bottom:18px}
     .plan-row{display:flex;align-items:center;justify-content:space-between;background:#f8f9fb;border-radius:8px;padding:16px 20px;margin-bottom:24px}
     .plan-label{font-size:.95rem;font-weight:600}
-    .plan-badge{font-size:.72rem;font-weight:700;padding:4px 12px;border-radius:20px;letter-spacing:.04em}
-    .plan-free{background:#fff3cd;color:#856404}
-    .plan-pro{background:#d4edda;color:#155724}
+    .plan-badge-profile{font-size:.72rem;font-weight:700;padding:4px 12px;border-radius:20px;letter-spacing:.04em}
   `;
 
   const content = `
@@ -41,8 +40,8 @@ router.get("/", (req, res) => {
           <div class="plan-label">Piano attivo</div>
         </div>
         <div style="display:flex;align-items:center;gap:12px">
-          <span class="plan-badge ${planLabel === "PRO" ? "plan-pro" : "plan-free"}">${planLabel}</span>
-          ${planLabel === "FREE" ? '<a href="/upgrade" class="link" style="font-size:.82rem">Passa a PRO</a>' : ""}
+          <span class="plan-badge-profile ${pi.cls}">${pi.label}</span>
+          ${isFree ? '<a href="/upgrade" class="link" style="font-size:.82rem">Cambia piano</a>' : ""}
         </div>
       </div>
 

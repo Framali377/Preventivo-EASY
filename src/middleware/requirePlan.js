@@ -25,9 +25,10 @@ function requirePlan(req, res, next) {
   if (count >= FREE_QUOTE_LIMIT) {
     return res.status(402).json({
       success: false,
-      error: "Limite gratuito raggiunto",
-      detail: `Il piano gratuito consente ${FREE_QUOTE_LIMIT} preventivi. Hai già creato ${count} preventivi.`,
-      upgrade_hint: "Passa a un piano a pagamento per preventivi illimitati o acquista un singolo preventivo."
+      error: "Hai raggiunto il limite del piano gratuito",
+      detail: `Hai utilizzato tutti i ${FREE_QUOTE_LIMIT} preventivi inclusi nel piano Free.`,
+      upgrade_hint: "Scegli un piano a pagamento per preventivi illimitati, oppure acquista un singolo preventivo a 0,79 €.",
+      upgrade_url: "/upgrade"
     });
   }
 

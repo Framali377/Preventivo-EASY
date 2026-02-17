@@ -57,7 +57,7 @@ router.get("/login", (req, res) => {
         }
       })
       .catch(function() {
-        errEl.textContent = 'Errore di rete';
+        errEl.textContent = 'Impossibile connettersi al server. Controlla la connessione e riprova.';
         errEl.style.display = 'block';
       });
     });`
@@ -130,7 +130,7 @@ router.get("/register", (req, res) => {
         }
       })
       .catch(function() {
-        errEl.textContent = 'Errore di rete';
+        errEl.textContent = 'Impossibile connettersi al server. Controlla la connessione e riprova.';
         errEl.style.display = 'block';
       });
     });`
@@ -143,18 +143,18 @@ router.post("/register", async (req, res) => {
   const { email, password, name, category, city, plan } = req.body;
 
   const errors = [];
-  if (!email) errors.push("email è obbligatorio");
-  else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) errors.push("email non valido");
-  if (!password) errors.push("password è obbligatorio");
-  else if (password.length < 6) errors.push("password deve avere almeno 6 caratteri");
-  if (!name) errors.push("name è obbligatorio");
+  if (!email) errors.push("Inserisci la tua email");
+  else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) errors.push("L'email inserita non è valida");
+  if (!password) errors.push("Inserisci una password");
+  else if (password.length < 6) errors.push("La password deve avere almeno 6 caratteri");
+  if (!name) errors.push("Inserisci il tuo nome");
 
   if (errors.length) {
     return res.status(400).json({ success: false, errors });
   }
 
   if (getUserByEmail(email)) {
-    return res.status(409).json({ success: false, error: "Email già registrata" });
+    return res.status(409).json({ success: false, error: "Esiste già un account con questa email. Prova ad accedere." });
   }
 
   const password_hash = await bcrypt.hash(password, SALT_ROUNDS);
@@ -183,17 +183,17 @@ router.post("/login", async (req, res) => {
   const { email, password } = req.body;
 
   if (!email || !password) {
-    return res.status(400).json({ success: false, error: "email e password sono obbligatori" });
+    return res.status(400).json({ success: false, error: "Inserisci email e password per accedere" });
   }
 
   const user = getUserByEmail(email);
   if (!user) {
-    return res.status(401).json({ success: false, error: "Credenziali non valide" });
+    return res.status(401).json({ success: false, error: "Email o password non corretti. Riprova." });
   }
 
   const match = await bcrypt.compare(password, user.password_hash);
   if (!match) {
-    return res.status(401).json({ success: false, error: "Credenziali non valide" });
+    return res.status(401).json({ success: false, error: "Email o password non corretti. Riprova." });
   }
 
   req.session.userId = user.id;
