@@ -2,6 +2,11 @@ require("dotenv").config();
 const express = require("express");
 const session = require("express-session");
 
+process.on("uncaughtException", (err) => {
+  console.error("[FATAL] Uncaught exception:", err.message, err.stack);
+  process.exit(1);
+});
+
 const authRoute = require("./routes/auth");
 const generateRoute = require("./routes/generate");
 const quotesRoute = require("./routes/quotes");
