@@ -100,5 +100,5 @@ function updateUser(userId, updates) {
 
 module.exports = {
   saveQuote, getQuoteById, loadQuotes, updateQuote, deleteQuote,
-  createUser, getUserByEmail, getUserById, getQuoteCountByUser, updateUser
+  createUser, getUserByEmail, getUserById, getQuoteCountByUser, updateUser, loadUsers
 };

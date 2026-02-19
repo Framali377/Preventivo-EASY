@@ -1,18 +1,37 @@
 // src/utils/claude.js
 const axios = require("axios");
+const path = require("path");
+const fs = require("fs");
 const { getUserPrompt } = require("./userPrompts");
+
+// ── Load profession templates ──
+const professionTemplates = JSON.parse(
+  fs.readFileSync(path.join(__dirname, "../data/professionTemplates.json"), "utf-8")
+);
+
+function getPromptHintForProfession(category) {
+  if (!category) return "Scomponi il lavoro in voci realistiche (materiali, manodopera, eventuali costi accessori)";
+  const cat = category.toLowerCase().trim();
+  for (const group of Object.values(professionTemplates.groups)) {
+    if (group.professions.includes(cat)) {
+      return group.prompt_hint;
+    }
+  }
+  return "Scomponi il lavoro in voci realistiche (materiali, manodopera, eventuali costi accessori)";
+}
 
 // ── System prompt originale (backward-compat per generate.js) ──
 
-function buildSystemPrompt(language, userContext) {
+function buildSystemPrompt(language, userContext, professionCategory) {
   const lang = language === "it" ? "italiano" : "English";
+  const hint = getPromptHintForProfession(professionCategory);
 
   let base = `Sei un assistente esperto nella generazione di preventivi professionali per il mercato italiano.
 Dato l'input con professionista, descrizione lavoro e livello di prezzo, genera un preventivo dettagliato.
 Rispondi in ${lang}.
 
 REGOLE:
-- Scomponi il lavoro in voci realistiche (materiali, manodopera, eventuali costi accessori)
+- ${hint}
 - I prezzi devono essere realistici per il mercato italiano
 - pricing_preset: "economy" = fascia bassa, "standard" = fascia media, "premium" = fascia alta
 - Calcola subtotal come somma dei subtotali delle voci
@@ -30,8 +49,9 @@ REGOLE:
 
 // ── Nuovo system prompt: suggerimenti costo/margine, NON prezzi finali ──
 
-function buildCostSuggestionsPrompt(language, userContext) {
+function buildCostSuggestionsPrompt(language, userContext, professionCategory) {
   const lang = language === "it" ? "italiano" : "English";
+  const hint = getPromptHintForProfession(professionCategory);
 
   let base = `Sei un assistente esperto nella stima dei costi per il mercato italiano.
 Il tuo compito è suggerire COSTI UNITARI e MARGINI per ogni voce di un preventivo.
@@ -39,7 +59,7 @@ NON calcolare mai il prezzo finale — lo farà il motore di pricing del sistema
 Rispondi in ${lang}.
 
 REGOLE:
-- Scomponi il lavoro in voci realistiche (materiali, manodopera, costi accessori)
+- ${hint}
 - Per ogni voce suggerisci:
   - suggested_unit_cost: il costo reale stimato (quanto costa al professionista)
   - suggested_margin_percent: il margine suggerito (tipicamente 20-40%)
@@ -94,7 +114,7 @@ Rispondi SOLO con questo formato JSON:
       model: "claude-sonnet-4-5-20250929",
       max_tokens: 1024,
       temperature: 0.3,
-      system: buildSystemPrompt(language, userContext),
+      system: buildSystemPrompt(language, userContext, input.profession || (input.professional && input.professional.category)),
       messages: [{ role: "user", content: userPrompt }]
     },
     {
@@ -154,7 +174,7 @@ Rispondi SOLO con questo formato JSON:
       model: "claude-sonnet-4-5-20250929",
       max_tokens: 1024,
       temperature: 0.3,
-      system: buildCostSuggestionsPrompt(language, userContext),
+      system: buildCostSuggestionsPrompt(language, userContext, input.profession || (input.professional && input.professional.category)),
       messages: [{ role: "user", content: userPrompt }]
     },
     {
@@ -183,7 +203,7 @@ Rispondi SOLO con questo formato JSON:
 
 // ── Ri-stima singola voce con input aggiuntivo dall'utente ──
 
-async function reEstimateSingleItem({ user_id, professional, description, user_input, pricing_preset }) {
+async function reEstimateSingleItem({ user_id, professional, description, user_input, pricing_preset, profession }) {
   const language = "it";
 
   let userContext = null;
@@ -218,7 +238,7 @@ Rispondi SOLO con questo formato JSON:
       model: "claude-sonnet-4-5-20250929",
       max_tokens: 512,
       temperature: 0.3,
-      system: buildCostSuggestionsPrompt(language, userContext),
+      system: buildCostSuggestionsPrompt(language, userContext, profession || (professional && professional.category)),
       messages: [{ role: "user", content: userPrompt }]
     },
     {

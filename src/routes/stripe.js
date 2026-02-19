@@ -39,7 +39,7 @@ router.get("/success", requireAuth, async (req, res) => {
   // Recupera dettagli sessione Stripe per mostrare cosa è stato acquistato
   let purchaseInfo = { title: "Pagamento completato!", detail: "Il tuo piano è stato aggiornato con successo." };
   const sessionId = req.query.session_id;
-  if (sessionId) {
+  if (sessionId && stripe) {
     try {
       const stripeSession = await stripe.checkout.sessions.retrieve(sessionId, { expand: ["line_items"] });
       const priceType = stripeSession.metadata?.price_type;
@@ -128,8 +128,8 @@ function findUserByCustomerId(customerId) {
 // ─── POST /stripe/webhook ───
 router.post("/webhook", async (req, res) => {
   if (!WEBHOOK_SECRET) {
-    console.error("[Stripe Webhook] STRIPE_WEBHOOK_SECRET mancante");
-    return res.status(500).json({ error: "Webhook non configurato" });
+    console.warn("[Stripe Webhook] STRIPE_WEBHOOK_SECRET mancante — evento ignorato");
+    return res.status(200).json({ received: true, warning: "webhook_secret_missing" });
   }
 
   const sig = req.headers["stripe-signature"];

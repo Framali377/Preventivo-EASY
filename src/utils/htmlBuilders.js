@@ -56,13 +56,14 @@ function buildQuoteHTML(quote) {
     .items-table thead th.r{text-align:right}
     .items-table thead th.c{text-align:center}
     .items-table tbody td{border-bottom:1px solid #f3f4f6}
+    .items-table tbody tr:nth-child(even){background:#f9fafb}
     .items-table tbody tr:last-child td{border-bottom:none}
-    .items-table tbody tr:hover{background:#fafbfc}
+    .items-table tbody tr:hover{background:#f0f4ff}
 
     /* Totals */
     .totals-card{background:linear-gradient(135deg,#1a1a2e,#16213e);border-radius:12px;padding:20px 24px;color:#fff;margin:20px 0 28px}
     .totals-row{display:flex;justify-content:space-between;padding:6px 0;font-size:.92rem;color:rgba(255,255,255,.7)}
-    .totals-row.grand{font-size:1.3rem;font-weight:700;color:#fff;border-top:1px solid rgba(255,255,255,.15);padding-top:12px;margin-top:8px}
+    .totals-row.grand{font-size:1.5rem;font-weight:700;color:#fff;border-top:2px solid rgba(255,255,255,.25);padding-top:14px;margin-top:10px}
 
     /* Footer */
     .footer{display:flex;flex-wrap:wrap;gap:20px;justify-content:space-between;align-items:center;font-size:.82rem;color:#9ca3af;border-top:1px solid #e5e7eb;padding-top:20px;margin-top:8px}
@@ -105,6 +106,7 @@ function buildQuoteHTML(quote) {
 
       <div class="desc">${esc(quote.job_description)}</div>
 
+      <h3 style="font-size:.72rem;text-transform:uppercase;letter-spacing:.08em;color:#9ca3af;font-weight:700;margin-bottom:12px;padding-bottom:6px;border-bottom:1px solid #f0f1f3">Dettaglio voci</h3>
       <table class="items-table">
         <thead>
           <tr>

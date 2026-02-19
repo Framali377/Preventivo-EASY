@@ -6,6 +6,7 @@ function requireAuth(req, res, next) {
     if (req.path.startsWith("/api/") || req.xhr || (req.headers.accept && req.headers.accept.includes("application/json") && !req.headers.accept.includes("text/html"))) {
       return res.status(401).json({ success: false, error: "Autenticazione richiesta" });
     }
+    req.session.returnTo = req.originalUrl;
     return res.redirect("/auth/login");
   }
 

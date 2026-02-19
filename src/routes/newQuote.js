@@ -74,6 +74,10 @@ router.get("/new", (req, res) => {
     imbianchino: "Es. Tinteggiatura appartamento 100mq: rasatura pareti e soffitti, due mani di pittura lavabile, velatura decorativa parete soggiorno, stuccatura crepe...",
     falegname: "Es. Realizzazione armadio a muro su misura 280x300cm: struttura in multistrato, ante scorrevoli con specchio, ripiani interni, cassettiera, illuminazione LED...",
     giardiniere: "Es. Progettazione e realizzazione giardino 200mq: impianto irrigazione automatico 6 zone, posa prato a rotoli, aiuole con piante mediterranee, vialetto in pietra...",
+    tecnici: "Es. Progetto di ristrutturazione appartamento 90mq: rilievo stato di fatto, progetto architettonico, computo metrico, pratica CILA, direzione lavori...",
+    consulenti: "Es. Assistenza legale per contenzioso contrattuale: studio della documentazione, redazione atto di diffida, eventuale ricorso, consulenza e assistenza in udienza...",
+    sanitario: "Es. Piano di trattamento ortodontico completo: prima visita con radiografia panoramica, impronte digitali, apparecchio fisso arcata superiore e inferiore, 24 mesi di controlli...",
+    digital: "Es. Realizzazione sito web aziendale 8 pagine: progettazione UX/UI, sviluppo responsive, integrazione CMS, ottimizzazione SEO base, 2 cicli di revisioni...",
     altro: "Descrivi il lavoro nel modo più dettagliato possibile: tipo di intervento, metrature, materiali desiderati, specifiche tecniche..."
   };
 
@@ -179,9 +183,13 @@ router.get("/new", (req, res) => {
     /* ── Totals block ── */
     .totals-card{background:linear-gradient(135deg,#1a1a2e,#16213e);border-radius:12px;padding:20px 24px;color:#fff;margin-bottom:20px}
     .totals-row{display:flex;justify-content:space-between;padding:6px 0;font-size:.92rem;color:rgba(255,255,255,.7)}
-    .totals-row.grand{font-size:1.35rem;font-weight:700;color:#fff;border-top:1px solid rgba(255,255,255,.15);padding-top:12px;margin-top:8px}
+    .totals-row.grand{font-size:1.5rem;font-weight:700;color:#fff;border-top:2px solid rgba(255,255,255,.25);padding-top:14px;margin-top:10px}
 
     .notes-box{background:#f8f9fb;border-left:3px solid #2563eb;padding:14px 18px;border-radius:0 8px 8px 0;font-size:.9rem;line-height:1.6;margin-bottom:20px}
+
+    /* ── Section headings ── */
+    .section-heading{font-size:.72rem;text-transform:uppercase;letter-spacing:.08em;color:#9ca3af;font-weight:700;margin-bottom:10px;padding-bottom:6px;border-bottom:1px solid #f0f1f3;display:flex;align-items:center;gap:6px}
+    .section-heading svg{width:14px;height:14px;opacity:.5}
 
     /* ── Loading overlay ── */
     .loading{display:none;text-align:center;padding:48px 24px}
@@ -322,7 +330,8 @@ router.get("/new", (req, res) => {
         <h2 style="font-size:1.15rem;margin-bottom:4px;font-weight:700">Anteprima del preventivo</h2>
         <p style="color:#888;font-size:.85rem;margin-bottom:20px">Modifica costi e margini cliccando sui valori. I prezzi si aggiornano in automatico.</p>
 
-        <!-- Riepilogo cliente -->
+        <!-- Dettagli cliente -->
+        <div class="section-heading">Dettagli cliente</div>
         <div class="client-summary">
           <div class="client-avatar" id="clientAvatar"></div>
           <div>
@@ -336,6 +345,9 @@ router.get("/new", (req, res) => {
           <div class="job-summary-label">Descrizione lavoro</div>
           <div class="job-summary-text" id="summaryJob"></div>
         </div>
+
+        <!-- Voci del preventivo -->
+        <div class="section-heading" style="margin-top:24px">Voci del preventivo</div>
 
         <!-- Barra azioni -->
         <div class="table-actions">
@@ -357,6 +369,7 @@ router.get("/new", (req, res) => {
         <div class="preview-section">
           <div class="item-cards" id="lineItems"></div>
 
+          <div class="section-heading" style="margin-top:20px">Riepilogo costi</div>
           <div id="totalsCard" class="totals-card">
             <div class="totals-row"><span>Imponibile</span><span id="subtotal"></span></div>
             <div class="totals-row" id="cassaRow" style="display:none"><span>Contributo cassa 4%</span><span id="cassaAmount"></span></div>
@@ -400,9 +413,22 @@ router.get("/new", (req, res) => {
 
     // ── Map profession → category for placeholders/chips ──
     var professionToCategory = {
+      // Artigiani
       idraulico: 'idraulico', elettricista: 'elettricista', muratore: 'edilizia',
       falegname: 'falegname', imbianchino: 'imbianchino', fabbro: 'edilizia',
-      piastrellista: 'edilizia', giardiniere: 'giardiniere', serramentista: 'falegname'
+      piastrellista: 'edilizia', giardiniere: 'giardiniere', serramentista: 'falegname',
+      // Tecnici
+      geometra: 'tecnici', ingegnere: 'tecnici', architetto: 'tecnici',
+      'perito industriale': 'tecnici', 'tecnico informatico': 'tecnici',
+      // Consulenti
+      avvocato: 'consulenti', commercialista: 'consulenti', 'consulente aziendale': 'consulenti',
+      'consulente IT': 'consulenti', 'consulente del lavoro': 'consulenti', notaio: 'consulenti',
+      // Sanitario
+      medico: 'sanitario', odontoiatra: 'sanitario', psicologo: 'sanitario',
+      fisioterapista: 'sanitario', veterinario: 'sanitario',
+      // Digital & Creativi
+      grafico: 'digital', fotografo: 'digital', 'web designer': 'digital',
+      videomaker: 'digital', traduttore: 'digital', copywriter: 'digital'
     };
 
     // ── Suggestion chips per category ──
@@ -413,6 +439,10 @@ router.get("/new", (req, res) => {
       imbianchino: ["metratura pareti", "numero stanze", "tipo pittura", "rasatura necessaria", "colori desiderati"],
       falegname: ["dimensioni mobili", "tipo legno", "ante/cassetti", "ferramenta", "finitura desiderata"],
       giardiniere: ["metratura giardino", "impianto irrigazione", "tipo prato", "piante desiderate", "illuminazione esterna"],
+      tecnici: ["tipo di immobile", "metratura", "pratiche necessarie", "sopralluogo richiesto", "tempistiche"],
+      consulenti: ["tipo di pratica", "complessità caso", "numero udienze/riunioni", "urgenza", "documentazione esistente"],
+      sanitario: ["tipo trattamento", "numero sedute", "esami necessari", "urgenza", "patologia/zona"],
+      digital: ["tipo di progetto", "numero pagine/contenuti", "revisioni previste", "formato consegna", "stile/riferimenti"],
       altro: ["metratura", "materiali preferiti", "tempistiche desiderate", "budget indicativo"]
     };
 

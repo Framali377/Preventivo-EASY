@@ -3,139 +3,199 @@ const express = require("express");
 const bcrypt = require("bcrypt");
 const router = express.Router();
 const { createUser, getUserByEmail } = require("../utils/storage");
-const { page } = require("../utils/layout");
 
 const SALT_ROUNDS = 10;
 
+// ── Shared auth page shell (standalone, no topbar) ──
+function authPage({ title, cardHtml, script }) {
+  return `<!DOCTYPE html>
+<html lang="it">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>${title} — Preventivo AI</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <style>
+    *{margin:0;padding:0;box-sizing:border-box}
+    body{font-family:'Inter',-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;background:#f0f2f5;color:#1e1e2d;min-height:100vh;display:flex;align-items:center;justify-content:center;padding:24px;font-size:14px;line-height:1.6}
+    .auth-card{background:#fff;border-radius:16px;box-shadow:0 4px 32px rgba(0,0,0,.08),0 0 0 1px rgba(0,0,0,.03);padding:44px 40px;max-width:440px;width:100%}
+    .auth-logo{display:flex;align-items:center;justify-content:center;gap:10px;margin-bottom:8px}
+    .auth-logo-icon{width:36px;height:36px;background:linear-gradient(135deg,#2563eb,#7c3aed);border-radius:9px;display:flex;align-items:center;justify-content:center;font-size:1rem;font-weight:700;color:#fff}
+    .auth-logo span{font-size:1.15rem;font-weight:700;letter-spacing:-.02em;color:#1e1e2d}
+    .auth-title{text-align:center;font-size:1.2rem;font-weight:700;margin-top:20px;margin-bottom:4px}
+    .auth-sub{text-align:center;color:#888;font-size:.88rem;margin-bottom:28px}
+    .field{margin-bottom:20px}
+    .field label{display:block;font-size:.76rem;font-weight:600;color:#555;text-transform:uppercase;letter-spacing:.04em;margin-bottom:7px}
+    .field input,.field select{width:100%;padding:11px 14px;border:1px solid #d1d5db;border-radius:8px;font-size:.9rem;font-family:inherit;transition:all .2s;background:#fff}
+    .field input:focus,.field select:focus{outline:none;border-color:#2563eb;box-shadow:0 0 0 3px rgba(37,99,235,.1)}
+    .field .hint{font-size:.75rem;color:#9ca3af;margin-top:5px}
+    .btn{display:flex;align-items:center;justify-content:center;gap:6px;width:100%;padding:12px 24px;border-radius:8px;font-size:.9rem;font-weight:600;cursor:pointer;border:none;text-align:center;transition:all .2s;line-height:1.4}
+    .btn-primary{background:linear-gradient(135deg,#2563eb,#1d4ed8);color:#fff;box-shadow:0 2px 8px rgba(37,99,235,.25)}
+    .btn-primary:hover{background:linear-gradient(135deg,#1d4ed8,#1e40af);box-shadow:0 4px 12px rgba(37,99,235,.35);transform:translateY(-1px)}
+    .auth-footer{text-align:center;margin-top:24px;font-size:.85rem;color:#888}
+    .auth-footer a{color:#2563eb;text-decoration:none;font-weight:500}
+    .auth-footer a:hover{text-decoration:underline}
+    .alert{padding:12px 16px;border-radius:8px;font-size:.85rem;margin-bottom:18px;display:none}
+    .alert-error{background:#fef2f2;color:#991b1b;border:1px solid #fecaca}
+    .free-badge{display:inline-flex;align-items:center;gap:5px;background:#ecfdf5;color:#065f46;font-size:.76rem;font-weight:600;padding:4px 12px;border-radius:16px;margin-top:8px}
+    .back-link{display:block;text-align:center;margin-top:16px;font-size:.82rem;color:#9ca3af}
+    .back-link a{color:#6b7280;text-decoration:none}
+    .back-link a:hover{color:#2563eb}
+  </style>
+</head>
+<body>
+  <div class="auth-card">
+    ${cardHtml}
+  </div>
+  <script>${script || ""}</script>
+</body>
+</html>`;
+}
+
 // ── GET /auth/login ──
 router.get("/login", (req, res) => {
-  const html = page({
-    title: "Login",
-    content: `
-  <div style="display:flex;align-items:center;justify-content:center;min-height:100vh;padding:24px">
-    <div class="card" style="padding:40px;max-width:420px;width:100%">
-      <h1 style="font-size:1.4rem;margin-bottom:4px;text-align:center">Preventivo AI</h1>
-      <p style="text-align:center;color:#888;font-size:.88rem;margin-bottom:28px">Accedi al tuo account</p>
-      <div id="error" class="alert alert-error" style="display:none"></div>
-      <form id="loginForm">
-        <div class="field">
-          <label for="email">Email</label>
-          <input type="email" id="email" name="email" required placeholder="La tua email">
-        </div>
-        <div class="field">
-          <label for="password">Password</label>
-          <input type="password" id="password" name="password" required placeholder="La tua password">
-        </div>
-        <button type="submit" class="btn btn-primary" style="width:100%">Accedi</button>
-      </form>
-      <p style="text-align:center;margin-top:20px;font-size:.85rem;color:#888">
-        Non hai un account? <a href="/auth/register" class="link">Registrati</a>
-      </p>
+  res.send(authPage({
+    title: "Accedi",
+    cardHtml: `
+    <div class="auth-logo">
+      <div class="auth-logo-icon">P</div>
+      <span>Preventivo AI</span>
     </div>
-  </div>`,
+    <h1 class="auth-title">Bentornato</h1>
+    <p class="auth-sub">Accedi al tuo account per continuare</p>
+    <div id="error" class="alert alert-error"></div>
+    <form id="loginForm">
+      <div class="field">
+        <label for="email">Email</label>
+        <input type="email" id="email" name="email" required placeholder="La tua email" autocomplete="email">
+      </div>
+      <div class="field">
+        <label for="password">Password</label>
+        <input type="password" id="password" name="password" required placeholder="La tua password" autocomplete="current-password">
+      </div>
+      <button type="submit" class="btn btn-primary">Accedi</button>
+    </form>
+    <p class="auth-footer">
+      Non hai un account? <a href="/auth/register">Registrati gratis</a>
+    </p>
+    <div class="back-link"><a href="/">&larr; Torna alla home</a></div>`,
     script: `
     document.getElementById('loginForm').addEventListener('submit', function(e) {
       e.preventDefault();
       var errEl = document.getElementById('error');
       errEl.style.display = 'none';
-      var body = {
-        email: document.getElementById('email').value,
-        password: document.getElementById('password').value
-      };
+      var btn = e.target.querySelector('button[type=submit]');
+      btn.disabled = true;
+      btn.textContent = 'Accesso in corso...';
       fetch('/auth/login', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(body)
+        body: JSON.stringify({
+          email: document.getElementById('email').value,
+          password: document.getElementById('password').value
+        })
       })
       .then(function(r) { return r.json(); })
       .then(function(data) {
         if (data.success) {
-          window.location.href = '/dashboard';
+          window.location.href = data.redirect || '/dashboard';
         } else {
-          errEl.textContent = data.error || data.errors.join(', ');
+          errEl.textContent = data.error || (data.errors && data.errors.join(', ')) || 'Errore';
           errEl.style.display = 'block';
+          btn.disabled = false;
+          btn.textContent = 'Accedi';
         }
       })
       .catch(function() {
-        errEl.textContent = 'Impossibile connettersi al server. Controlla la connessione e riprova.';
+        errEl.textContent = 'Impossibile connettersi. Controlla la connessione e riprova.';
         errEl.style.display = 'block';
+        btn.disabled = false;
+        btn.textContent = 'Accedi';
       });
     });`
-  });
-  res.send(html);
+  }));
 });
 
 // ── GET /auth/register ──
 router.get("/register", (req, res) => {
-  const html = page({
+  res.send(authPage({
     title: "Registrazione",
-    content: `
-  <div style="display:flex;align-items:center;justify-content:center;min-height:100vh;padding:24px">
-    <div class="card" style="padding:40px;max-width:480px;width:100%">
-      <h1 style="font-size:1.4rem;margin-bottom:4px;text-align:center">Preventivo AI</h1>
-      <p style="text-align:center;color:#888;font-size:.88rem;margin-bottom:28px">Crea il tuo account</p>
-      <div id="error" class="alert alert-error" style="display:none"></div>
-      <form id="registerForm">
-        <div class="field">
-          <label for="name">Nome completo</label>
-          <input type="text" id="name" name="name" required placeholder="es. Mario Rossi">
-        </div>
-        <div class="field">
-          <label for="email">Email</label>
-          <input type="email" id="email" name="email" required placeholder="La tua email">
-        </div>
-        <div class="field">
-          <label for="password">Password</label>
-          <input type="password" id="password" name="password" required minlength="6" placeholder="Minimo 6 caratteri">
-        </div>
-        <div class="field">
-          <label for="category">Categoria professionale</label>
-          <input type="text" id="category" name="category" placeholder="es. Idraulico, Elettricista, Architetto">
-        </div>
-        <div class="field">
-          <label for="city">Citta</label>
-          <input type="text" id="city" name="city" placeholder="es. Milano">
-        </div>
-        <button type="submit" class="btn btn-primary" style="width:100%">Registrati</button>
-      </form>
-      <p style="text-align:center;margin-top:20px;font-size:.85rem;color:#888">
-        Hai gia un account? <a href="/auth/login" class="link">Accedi</a>
-      </p>
+    cardHtml: `
+    <div class="auth-logo">
+      <div class="auth-logo-icon">P</div>
+      <span>Preventivo AI</span>
     </div>
-  </div>`,
+    <h1 class="auth-title">Crea il tuo account</h1>
+    <p class="auth-sub">Inizia a creare preventivi con l'AI <span class="free-badge">FREE &mdash; nessuna carta richiesta</span></p>
+    <div id="error" class="alert alert-error"></div>
+    <form id="registerForm">
+      <div class="field">
+        <label for="name">Nome completo</label>
+        <input type="text" id="name" name="name" required placeholder="es. Mario Rossi" autocomplete="name">
+      </div>
+      <div class="field">
+        <label for="email">Email</label>
+        <input type="email" id="email" name="email" required placeholder="La tua email" autocomplete="email">
+      </div>
+      <div class="field">
+        <label for="password">Password</label>
+        <input type="password" id="password" name="password" required minlength="6" placeholder="Minimo 6 caratteri" autocomplete="new-password">
+      </div>
+      <div class="field">
+        <label for="category">Categoria professionale</label>
+        <input type="text" id="category" name="category" placeholder="es. Idraulico, Avvocato, Web Designer">
+        <div class="hint">Opzionale &mdash; puoi aggiungerla dopo nel profilo</div>
+      </div>
+      <div class="field">
+        <label for="city">Citt&agrave;</label>
+        <input type="text" id="city" name="city" placeholder="es. Milano" autocomplete="address-level2">
+      </div>
+      <button type="submit" class="btn btn-primary">Registrati gratis</button>
+    </form>
+    <p class="auth-footer">
+      Hai gi&agrave; un account? <a href="/auth/login">Accedi</a>
+    </p>
+    <div class="back-link"><a href="/">&larr; Torna alla home</a></div>`,
     script: `
     document.getElementById('registerForm').addEventListener('submit', function(e) {
       e.preventDefault();
       var errEl = document.getElementById('error');
       errEl.style.display = 'none';
-      var body = {
-        name: document.getElementById('name').value,
-        email: document.getElementById('email').value,
-        password: document.getElementById('password').value,
-        category: document.getElementById('category').value || undefined,
-        city: document.getElementById('city').value || undefined
-      };
+      var btn = e.target.querySelector('button[type=submit]');
+      btn.disabled = true;
+      btn.textContent = 'Creazione account...';
       fetch('/auth/register', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(body)
+        body: JSON.stringify({
+          name: document.getElementById('name').value,
+          email: document.getElementById('email').value,
+          password: document.getElementById('password').value,
+          category: document.getElementById('category').value || undefined,
+          city: document.getElementById('city').value || undefined
+        })
       })
       .then(function(r) { return r.json(); })
       .then(function(data) {
         if (data.success) {
           window.location.href = '/dashboard';
         } else {
-          errEl.textContent = data.error || data.errors.join(', ');
+          errEl.textContent = data.error || (data.errors && data.errors.join(', ')) || 'Errore';
           errEl.style.display = 'block';
+          btn.disabled = false;
+          btn.textContent = 'Registrati gratis';
         }
       })
       .catch(function() {
-        errEl.textContent = 'Impossibile connettersi al server. Controlla la connessione e riprova.';
+        errEl.textContent = 'Impossibile connettersi. Controlla la connessione e riprova.';
         errEl.style.display = 'block';
+        btn.disabled = false;
+        btn.textContent = 'Registrati gratis';
       });
     });`
-  });
-  res.send(html);
+  }));
 });
 
 // POST /auth/register
@@ -198,8 +258,11 @@ router.post("/login", async (req, res) => {
 
   req.session.userId = user.id;
 
+  const redirect = req.session.returnTo || "/dashboard";
+  delete req.session.returnTo;
+
   const { password_hash: _, ...safeUser } = user;
-  res.json({ success: true, user: safeUser });
+  res.json({ success: true, user: safeUser, redirect });
 });
 
 // POST /auth/logout

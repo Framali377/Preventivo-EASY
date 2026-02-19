@@ -1,6 +1,8 @@
 require("dotenv").config();
 const express = require("express");
 const session = require("express-session");
+const path = require("path");
+const FileStore = require("session-file-store")(session);
 
 process.on("uncaughtException", (err) => {
   console.error("[FATAL] Uncaught exception:", err.message, err.stack);
@@ -19,6 +21,7 @@ const stripeRoute = require("./routes/stripe");
 const requireAuth = require("./middleware/requireAuth");
 
 const app = express();
+app.set("trust proxy", 1);
 
 // ─── HEALTH CHECK — nessun middleware, prima di tutto ───
 app.get("/health", (_req, res) => {
@@ -35,21 +38,30 @@ app.use(express.urlencoded({ extended: true }));
 // ─── Sessioni ───
 app.use(
   session({
+    store: new FileStore({
+      path: path.join(__dirname, "data", "sessions"),
+      ttl: 86400,
+      retries: 0
+    }),
     secret: process.env.SESSION_SECRET || "preventivo-ai-secret",
     resave: false,
     saveUninitialized: false,
     cookie: {
       maxAge: 24 * 60 * 60 * 1000,
-      secure: false,
+      secure: process.env.NODE_ENV === "production",
+      sameSite: "lax",
+      httpOnly: true
     },
   })
 );
 
 // ─── Root ───
-app.get("/", (req, res) => {
+const landingRoute = require("./routes/landing");
+app.get("/", (req, res, next) => {
   if (req.session?.userId) return res.redirect("/dashboard");
-  res.redirect("/auth/login");
+  next();
 });
+app.use("/", landingRoute);
 
 // ─── Pubbliche ───
 app.use("/auth", authRoute);

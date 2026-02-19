@@ -1,0 +1,29 @@
+{
+  "groups": {
+    "Artigiani": {
+      "professions": ["idraulico", "elettricista", "muratore", "falegname", "imbianchino", "fabbro", "piastrellista", "giardiniere", "serramentista"],
+      "prompt_hint": "Scomponi il lavoro in voci realistiche: manodopera, materiali, eventuale trasferta, smaltimento rifiuti",
+      "typical_items": ["manodopera", "materiali", "trasferta", "smaltimento"]
+    },
+    "Tecnici": {
+      "professions": ["geometra", "ingegnere", "architetto", "perito industriale", "tecnico informatico"],
+      "prompt_hint": "Scomponi il lavoro in voci realistiche: progettazione, analisi tecnica, direzione lavori, pratiche e permessi, sopralluoghi",
+      "typical_items": ["progettazione", "analisi tecnica", "direzione lavori", "pratiche/permessi", "sopralluoghi"]
+    },
+    "Consulenti": {
+      "professions": ["avvocato", "commercialista", "consulente aziendale", "consulente IT", "consulente del lavoro", "notaio"],
+      "prompt_hint": "Scomponi il lavoro in voci realistiche: onorario/parcella professionale, analisi e studio della pratica, consulenza e assistenza, spese accessorie, bolli e diritti. NON usare MAI le voci 'manodopera' o 'materiali'",
+      "typical_items": ["onorario/parcella", "analisi e studio", "consulenza", "spese accessorie", "bolli e diritti"]
+    },
+    "Sanitario": {
+      "professions": ["medico", "odontoiatra", "psicologo", "fisioterapista", "veterinario"],
+      "prompt_hint": "Scomponi il lavoro in voci realistiche: visita/seduta professionale, trattamento specifico, esami diagnostici, materiali sanitari e monouso",
+      "typical_items": ["visita/seduta", "trattamento", "esami diagnostici", "materiali sanitari"]
+    },
+    "Digital & Creativi": {
+      "professions": ["grafico", "fotografo", "web designer", "videomaker", "traduttore", "copywriter"],
+      "prompt_hint": "Scomponi il lavoro in voci realistiche: progettazione creativa, produzione/realizzazione, revisioni incluse, consegna file/materiali, licenze e asset",
+      "typical_items": ["progettazione creativa", "produzione", "revisioni", "consegna", "licenze"]
+    }
+  }
+}

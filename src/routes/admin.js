@@ -38,6 +38,8 @@ router.get("/", (req, res) => {
           <option value="early">Early Bird</option>
           <option value="standard">Standard</option>
         </select>
+        <input type="number" class="credits-input" data-uid="${esc(u.id)}" placeholder="+crediti" min="1" max="100" style="width:70px">
+        <button class="act-btn act-credits" data-uid="${esc(u.id)}" data-action="credits">+Crediti</button>
         <button class="act-btn ${disabled ? "act-enable" : "act-disable"}" data-uid="${esc(u.id)}" data-action="${disabled ? "enable" : "disable"}">
           ${disabled ? "Attiva" : "Disattiva"}
         </button>`}
@@ -63,6 +65,9 @@ router.get("/", (req, res) => {
     .act-disable:hover{background:#fef2f2}
     .act-enable{color:#22c55e;border-color:#a7f3d0}
     .act-enable:hover{background:#ecfdf5}
+    .act-credits{color:#2563eb;border-color:#93c5fd}
+    .act-credits:hover{background:#eff6ff}
+    .credits-input{padding:4px 6px;border:1px solid #d1d5db;border-radius:6px;font-size:.78rem;font-family:inherit}
     .toast{position:fixed;bottom:24px;left:50%;transform:translateX(-50%);background:#1a1a2e;color:#fff;padding:10px 24px;border-radius:8px;font-size:.85rem;opacity:0;transition:opacity .3s;pointer-events:none;z-index:100}
     .toast.show{opacity:1}
   `;
@@ -141,8 +146,35 @@ router.get("/", (req, res) => {
       });
     });
 
+    // Credits buttons
+    document.querySelectorAll('.act-credits').forEach(function(btn) {
+      btn.addEventListener('click', function() {
+        var uid = this.dataset.uid;
+        var input = document.querySelector('.credits-input[data-uid="' + uid + '"]');
+        var amount = parseInt(input.value) || 0;
+        if (amount < 1) { showToast('Inserisci un numero di crediti'); return; }
+        this.disabled = true;
+        fetch('/admin/user/' + uid + '/credits', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ amount: amount })
+        })
+        .then(function(r) { return r.json(); })
+        .then(function(data) {
+          if (data.success) {
+            showToast('+' + amount + ' crediti aggiunti (totale: ' + data.credits + ')');
+            setTimeout(function() { location.reload(); }, 800);
+          } else {
+            showToast(data.error || 'Errore');
+            btn.disabled = false;
+          }
+        })
+        .catch(function() { showToast('Errore di rete'); btn.disabled = false; });
+      });
+    });
+
     // Disable/Enable buttons
-    document.querySelectorAll('.act-btn').forEach(function(btn) {
+    document.querySelectorAll('.act-btn:not(.act-credits)').forEach(function(btn) {
       btn.addEventListener('click', function() {
         var uid = this.dataset.uid;
         var action = this.dataset.action;
@@ -196,6 +228,22 @@ router.post("/user/:id/plan", (req, res) => {
 
   updateUser(req.params.id, updates);
   res.json({ success: true });
+});
+
+// ─── POST /admin/user/:id/credits ───
+router.post("/user/:id/credits", (req, res) => {
+  const amount = parseInt(req.body.amount);
+  if (!amount || amount < 1 || amount > 100) {
+    return res.status(400).json({ success: false, error: "Quantità non valida (1-100)" });
+  }
+
+  const target = getUserById(req.params.id);
+  if (!target) return res.status(404).json({ success: false, error: "Utente non trovato" });
+
+  const newCredits = (target.credits || 0) + amount;
+  updateUser(req.params.id, { credits: newCredits });
+  console.log(`[Admin] +${amount} crediti a ${target.email} (totale: ${newCredits})`);
+  res.json({ success: true, credits: newCredits });
 });
 
 // ─── POST /admin/user/:id/disable ───
