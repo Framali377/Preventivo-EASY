@@ -28,6 +28,15 @@ app.get("/health", (_req, res) => {
   res.status(200).json({ status: "ok", env: process.env.NODE_ENV || "development" });
 });
 
+// ─── SEO: robots.txt + sitemap.xml ───
+app.get("/robots.txt", (_req, res) => {
+  res.type("text/plain").send(`User-agent: *\nAllow: /\nDisallow: /dashboard\nDisallow: /admin\nDisallow: /profile\nDisallow: /quotes/\nDisallow: /api/\nSitemap: ${_req.protocol}://${_req.get("host")}/sitemap.xml`);
+});
+app.get("/sitemap.xml", (req, res) => {
+  const base = `${req.get("x-forwarded-proto") || req.protocol}://${req.get("host")}`;
+  res.type("application/xml").send(`<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n  <url><loc>${base}/</loc><changefreq>weekly</changefreq><priority>1.0</priority></url>\n  <url><loc>${base}/auth/login</loc><changefreq>monthly</changefreq><priority>0.5</priority></url>\n  <url><loc>${base}/auth/register</loc><changefreq>monthly</changefreq><priority>0.7</priority></url>\n</urlset>`);
+});
+
 // ─── Stripe webhook: raw body PRIMA di express.json() ───
 app.use("/stripe/webhook", express.raw({ type: "application/json" }));
 

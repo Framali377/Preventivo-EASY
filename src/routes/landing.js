@@ -9,7 +9,15 @@ router.get("/", (req, res) => {
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Preventivo AI — Crea preventivi professionali in 30 secondi</title>
-  <meta name="description" content="L'assistente AI che genera preventivi dettagliati e realistici per qualsiasi professione. Provalo gratis.">
+  <meta name="description" content="L'assistente AI che genera preventivi dettagliati e realistici per qualsiasi professione. Provalo gratis, senza carta di credito.">
+  <meta name="robots" content="index, follow">
+  <meta property="og:title" content="Preventivo AI — Preventivi professionali in 30 secondi">
+  <meta property="og:description" content="L'assistente AI per consulenti, tecnici, artigiani e professionisti. Genera preventivi dettagliati con costi realistici.">
+  <meta property="og:type" content="website">
+  <meta property="og:locale" content="it_IT">
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:title" content="Preventivo AI">
+  <meta name="twitter:description" content="Crea preventivi professionali in 30 secondi con l'AI.">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
