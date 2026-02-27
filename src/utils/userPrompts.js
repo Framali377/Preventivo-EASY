@@ -159,4 +159,82 @@ function analyzeAndGenerate(userId, quotes) {
   return promptData;
 }
 
-module.exports = { getUserPrompt, saveUserPrompt, analyzeAndGenerate, TRAINING_THRESHOLD };
+/**
+ * Profilo comportamentale strutturato per il motore AI.
+ * Soglia più bassa (3 preventivi) rispetto al training completo.
+ * Restituisce dati numerici strutturati (non solo context_prompt testuale).
+ */
+function getUserBehaviorProfile(userId, quotes) {
+  const BEHAVIOR_THRESHOLD = 3;
+  const userQuotes = quotes.filter(q => q.user_id === userId || q.owner_user_id === userId);
+
+  if (userQuotes.length < BEHAVIOR_THRESHOLD) return null;
+
+  // Raccogli statistiche
+  const avgByPreset = {};
+  let marginSum = 0;
+  let marginCount = 0;
+  let priceMin = Infinity;
+  let priceMax = 0;
+  let totalItemCount = 0;
+  const itemStats = {};
+
+  for (const q of userQuotes) {
+    const preset = q.pricing_preset || "standard";
+    if (!avgByPreset[preset]) avgByPreset[preset] = { sum: 0, count: 0 };
+    avgByPreset[preset].sum += q.total || 0;
+    avgByPreset[preset].count += 1;
+
+    if (q.total > 0) {
+      if (q.total < priceMin) priceMin = q.total;
+      if (q.total > priceMax) priceMax = q.total;
+    }
+
+    if (q.line_items) {
+      totalItemCount += q.line_items.length;
+      for (const item of q.line_items) {
+        const key = (item.description || "").toLowerCase().trim();
+        if (!key) continue;
+
+        if (!itemStats[key]) {
+          itemStats[key] = { priceSum: 0, count: 0, marginSum: 0, marginCount: 0 };
+        }
+        itemStats[key].priceSum += item.unit_price || item.subtotal || 0;
+        itemStats[key].count += 1;
+
+        const m = item.margin_percent;
+        if (typeof m === "number" && m > 0) {
+          itemStats[key].marginSum += m;
+          itemStats[key].marginCount += 1;
+          marginSum += m;
+          marginCount += 1;
+        }
+      }
+    }
+  }
+
+  // Prezzi medi per preset
+  const avg_prices = {};
+  for (const [preset, data] of Object.entries(avgByPreset)) {
+    avg_prices[preset] = Math.round(data.sum / data.count);
+  }
+
+  // Voci frequenti: top 10
+  const frequent_items = Object.entries(itemStats)
+    .sort((a, b) => b[1].count - a[1].count)
+    .slice(0, 10)
+    .map(([desc]) => desc);
+
+  return {
+    avg_prices,
+    frequent_items,
+    typical_item_count: userQuotes.length > 0 ? Math.round(totalItemCount / userQuotes.length) : 5,
+    avg_margin: marginCount > 0 ? Math.round(marginSum / marginCount * 10) / 10 : 30,
+    price_range: {
+      min: priceMin === Infinity ? 0 : Math.round(priceMin),
+      max: Math.round(priceMax)
+    }
+  };
+}
+
+module.exports = { getUserPrompt, saveUserPrompt, analyzeAndGenerate, getUserBehaviorProfile, TRAINING_THRESHOLD };

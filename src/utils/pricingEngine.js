@@ -117,6 +117,27 @@ function processAiSuggestions(suggestions) {
   });
 }
 
+/**
+ * Calcolo fiscale completo dato subtotale e profilo fiscale.
+ * Sostituisce il calcolo fisso TAX_RATE = 0.22 per lo Step 4 del wizard.
+ *
+ * @param {number} subtotal - Somma dei subtotali delle voci (imponibile)
+ * @param {object} taxProfile - Oggetto dal tax_profiles.json (iva_percent, previdenza_percent)
+ * @returns {{ imponibile, cassa, imponibile_con_cassa, iva, totale }}
+ */
+function computeFiscalTotals(subtotal, taxProfile) {
+  const imponibile = round2(Math.max(0, Number(subtotal) || 0));
+  const prevPercent = Number(taxProfile && taxProfile.previdenza_percent) || 0;
+  const ivaPercent = Number(taxProfile && taxProfile.iva_percent) || 0;
+
+  const cassa = round2(imponibile * prevPercent / 100);
+  const imponibile_con_cassa = round2(imponibile + cassa);
+  const iva = round2(imponibile_con_cassa * ivaPercent / 100);
+  const totale = round2(imponibile_con_cassa + iva);
+
+  return { imponibile, cassa, imponibile_con_cassa, iva, totale };
+}
+
 module.exports = {
   TAX_RATE,
   DEFAULT_MARGIN,
@@ -127,5 +148,6 @@ module.exports = {
   computeMargin,
   processLineItem,
   processQuote,
-  processAiSuggestions
+  processAiSuggestions,
+  computeFiscalTotals
 };

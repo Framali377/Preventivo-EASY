@@ -43,7 +43,7 @@ const PRICES = {
       currency: "eur",
       unit_amount: 500,
       recurring: { interval: "month" },
-      product_data: { name: "Preventivo AI — Early Bird (5 €/mese)" }
+      product_data: { name: "Preventivo EASY — Early Bird (5 €/mese)" }
     }
   },
   standard: {
@@ -52,7 +52,7 @@ const PRICES = {
       currency: "eur",
       unit_amount: 899,
       recurring: { interval: "month" },
-      product_data: { name: "Preventivo AI — Standard (8,99 €/mese)" }
+      product_data: { name: "Preventivo EASY — Standard (8,99 €/mese)" }
     }
   },
   pay_per_use: {
@@ -60,7 +60,7 @@ const PRICES = {
     price_data: {
       currency: "eur",
       unit_amount: 79,
-      product_data: { name: "Preventivo AI — Singolo preventivo" }
+      product_data: { name: "Preventivo EASY — Singolo preventivo" }
     }
   }
 };

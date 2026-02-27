@@ -43,7 +43,7 @@ router.get("/", (req, res) => {
     .prices-table{overflow-x:auto;margin-bottom:20px}
     .cell-input{width:100%;padding:7px 10px;border:1px solid transparent;background:transparent;border-radius:4px;font-size:.86rem;font-family:inherit;transition:border-color .15s}
     .cell-input:hover{border-color:#d1d5db}
-    .cell-input:focus{border-color:#2563eb;outline:none;background:#fff}
+    .cell-input:focus{border-color:#0d9488;outline:none;background:#fff}
     .cell-price{text-align:right;width:100px}
     select.cell-input{cursor:pointer;padding:7px 6px}
     .row-delete{background:none;border:none;color:#ccc;font-size:1.2rem;cursor:pointer;padding:4px 8px;border-radius:4px;transition:color .15s}
@@ -55,7 +55,7 @@ router.get("/", (req, res) => {
     .import-hint{font-size:.75rem;color:#9ca3af;margin-top:6px}
     .bottom-bar{display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:12px;padding-top:20px;border-top:1px solid #f0f0f0}
     .row-count{font-size:.82rem;color:#9ca3af}
-    .toast{position:fixed;bottom:24px;left:50%;transform:translateX(-50%);background:#1e1e2d;color:#fff;padding:10px 24px;border-radius:8px;font-size:.85rem;opacity:0;transition:opacity .3s;pointer-events:none;z-index:100}
+    .toast{position:fixed;bottom:24px;left:50%;transform:translateX(-50%);background:#1c1917;color:#fff;padding:10px 24px;border-radius:8px;font-size:.85rem;opacity:0;transition:opacity .3s;pointer-events:none;z-index:100}
     .toast.show{opacity:1}
     .ai-overlay{display:none;position:fixed;inset:0;background:rgba(0,0,0,.4);z-index:200;align-items:center;justify-content:center}
     .ai-overlay.show{display:flex}
@@ -65,7 +65,7 @@ router.get("/", (req, res) => {
     .ai-box .ai-actions{display:flex;gap:8px;margin-bottom:16px}
     .ai-results{margin-top:16px}
     .ai-results table{margin-bottom:12px}
-    .ai-results .ai-add{background:none;border:none;color:#2563eb;cursor:pointer;font-size:.82rem;font-weight:600;padding:2px 6px}
+    .ai-results .ai-add{background:none;border:none;color:#0d9488;cursor:pointer;font-size:.82rem;font-weight:600;padding:2px 6px}
     .ai-results .ai-add:hover{text-decoration:underline}
     .ai-add-all{margin-top:8px}
   `;
@@ -104,7 +104,7 @@ router.get("/", (req, res) => {
             </tr>
           </thead>
           <tbody id="tableBody">
-            ${rows || '<tr class="empty-row"><td colspan="5">Nessuna voce nel listino. Clicca "Aggiungi voce" per iniziare.</td></tr>'}
+            ${rows || '<tr class="empty-row"><td colspan="5">Il tuo listino &egrave; vuoto. Aggiungi le tue prime voci o clicca &ldquo;Genera suggerimenti AI&rdquo; per farti aiutare.</td></tr>'}
           </tbody>
         </table>
       </div>
@@ -132,7 +132,7 @@ router.get("/", (req, res) => {
         <button class="btn btn-secondary" id="aiCloseBtn">Chiudi</button>
       </div>
       <div id="aiLoading" style="display:none;text-align:center;padding:16px">
-        <div class="spinner" style="width:28px;height:28px;border:3px solid #eee;border-top-color:#2563eb;border-radius:50%;animation:spin .8s linear infinite;margin:0 auto 10px"></div>
+        <div class="spinner" style="width:28px;height:28px;border:3px solid #eee;border-top-color:#0d9488;border-radius:50%;animation:spin .8s linear infinite;margin:0 auto 10px"></div>
         <p style="font-size:.84rem;color:#888">Generazione suggerimenti...</p>
       </div>
       <div class="ai-results" id="aiResults" style="display:none"></div>
@@ -151,7 +151,7 @@ router.get("/", (req, res) => {
       if (rows.length === 0 && !emptyRow) {
         var tr = document.createElement('tr');
         tr.className = 'empty-row';
-        tr.innerHTML = '<td colspan="5">Nessuna voce nel listino.</td>';
+        tr.innerHTML = '<td colspan="5">Il tuo listino \\u00e8 vuoto. Aggiungi le tue prime voci o clicca \\u201cGenera suggerimenti AI\\u201d per farti aiutare.</td>';
         tbody.appendChild(tr);
       } else if (rows.length > 0 && emptyRow) {
         emptyRow.remove();

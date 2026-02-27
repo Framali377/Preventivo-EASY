@@ -2,7 +2,7 @@
 const express = require("express");
 const router = express.Router();
 const crypto = require("crypto");
-const { getUserById, saveQuote, getQuoteById, updateQuote, deleteQuote } = require("../utils/storage");
+const { getUserById, saveQuote, getQuoteById, updateQuote, deleteQuote, updateUser, loadQuotes } = require("../utils/storage");
 const claude = require("../utils/claude");
 const pricingEngine = require("../utils/pricingEngine");
 const feedback = require("../utils/feedback");
@@ -15,9 +15,10 @@ const { buildQuoteEmailHTML } = require("../utils/emailTemplates");
 const path = require("path");
 const fs = require("fs");
 
-// ── Load professions and tax profiles ──
+// ── Load professions, tax profiles, and profession templates ──
 const professions = JSON.parse(fs.readFileSync(path.join(__dirname, "../data/professions.json"), "utf-8"));
 const taxProfiles = JSON.parse(fs.readFileSync(path.join(__dirname, "../data/tax_profiles.json"), "utf-8"));
+const professionTemplates = JSON.parse(fs.readFileSync(path.join(__dirname, "../data/professionTemplates.json"), "utf-8"));
 
 // ── GET /quotes/item-search — Autocomplete voci ──
 
@@ -60,28 +61,45 @@ router.post("/re-estimate-row", requirePlan, async (req, res) => {
   }
 });
 
-// ── GET /quotes/new — Wizard 3 step ──
+// ── POST /quotes/setup-profile — Salva profilo professionale (Step 1) ──
+
+router.post("/setup-profile", (req, res) => {
+  const user = getUserById(req.session.userId);
+  if (!user) return res.status(401).json({ success: false, error: "Non autenticato" });
+
+  const { profession, taxProfile, cassaPercent, ivaPercent } = req.body;
+
+  if (!profession) {
+    return res.status(400).json({ success: false, error: "Seleziona la professione" });
+  }
+  if (!taxProfile) {
+    return res.status(400).json({ success: false, error: "Seleziona il regime fiscale" });
+  }
+
+  const updates = {
+    category: profession,
+    taxProfile: taxProfile,
+    cassaPercent: Number(cassaPercent) || 0,
+    ivaPercent: Number(ivaPercent) || 0,
+    defaultMargin: 30,
+    profileCompleted: true
+  };
+
+  const updated = updateUser(user.id, updates);
+  if (!updated) {
+    return res.status(500).json({ success: false, error: "Errore durante il salvataggio" });
+  }
+
+  res.json({ success: true });
+});
+
+// ── GET /quotes/new — Interfaccia prompt 2 step ──
 
 router.get("/new", (req, res) => {
   const user = getUserById(req.session.userId);
   if (!user) return res.redirect("/auth/login");
 
-  // Category placeholders for Step 2
-  const categoryPlaceholders = {
-    idraulico: "Es. Ristrutturazione completa bagno 8mq: sostituzione tubazioni, installazione sanitari sospesi Ideal Standard, piatto doccia 80x120, rubinetteria termostatica...",
-    elettricista: "Es. Rifacimento impianto elettrico appartamento 90mq: nuovo quadro elettrico, 25 punti luce, 15 prese, predisposizione domotica, certificazione...",
-    edilizia: "Es. Ristrutturazione cucina 12mq: demolizione e rifacimento massetto, posa pavimento gres 60x60, rasatura e tinteggiatura pareti, controsoffitto in cartongesso...",
-    imbianchino: "Es. Tinteggiatura appartamento 100mq: rasatura pareti e soffitti, due mani di pittura lavabile, velatura decorativa parete soggiorno, stuccatura crepe...",
-    falegname: "Es. Realizzazione armadio a muro su misura 280x300cm: struttura in multistrato, ante scorrevoli con specchio, ripiani interni, cassettiera, illuminazione LED...",
-    giardiniere: "Es. Progettazione e realizzazione giardino 200mq: impianto irrigazione automatico 6 zone, posa prato a rotoli, aiuole con piante mediterranee, vialetto in pietra...",
-    tecnici: "Es. Progetto di ristrutturazione appartamento 90mq: rilievo stato di fatto, progetto architettonico, computo metrico, pratica CILA, direzione lavori...",
-    consulenti: "Es. Assistenza legale per contenzioso contrattuale: studio della documentazione, redazione atto di diffida, eventuale ricorso, consulenza e assistenza in udienza...",
-    sanitario: "Es. Piano di trattamento ortodontico completo: prima visita con radiografia panoramica, impronte digitali, apparecchio fisso arcata superiore e inferiore, 24 mesi di controlli...",
-    digital: "Es. Realizzazione sito web aziendale 8 pagine: progettazione UX/UI, sviluppo responsive, integrazione CMS, ottimizzazione SEO base, 2 cicli di revisioni...",
-    altro: "Descrivi il lavoro nel modo più dettagliato possibile: tipo di intervento, metrature, materiali desiderati, specifiche tecniche..."
-  };
-
-  // User's category for auto-selection
+  const profileCompleted = !!user.profileCompleted;
   const userCategory = user.category || "";
 
   // Build profession <option> groups
@@ -97,71 +115,86 @@ router.get("/new", (req, res) => {
     `<option value="${esc(tp.id)}"${userTaxProfile === tp.id ? " selected" : ""}>${esc(tp.name)}</option>`
   ).join("");
 
-  const extraCss = `
-    /* ── Stepper ── */
-    .stepper{display:flex;justify-content:center;gap:0;margin-bottom:36px;position:relative}
-    .step-item{display:flex;align-items:center;gap:0}
-    .step-circle{width:40px;height:40px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-weight:700;font-size:.88rem;border:2.5px solid #e2e4e8;color:#aaa;background:#fff;transition:all .3s;position:relative;z-index:1}
-    .step-circle.active{border-color:#2563eb;color:#fff;background:linear-gradient(135deg,#2563eb,#1d4ed8);box-shadow:0 2px 8px rgba(37,99,235,.3)}
-    .step-circle.done{border-color:#22c55e;color:#fff;background:#22c55e}
-    .step-label{font-size:.74rem;color:#aaa;text-align:center;margin-top:8px;font-weight:500;transition:color .3s}
-    .step-label.active{color:#2563eb;font-weight:600}
-    .step-label.done{color:#22c55e}
-    .step-line{width:70px;height:2.5px;background:#e2e4e8;align-self:center;margin:0 6px;transition:background .3s;border-radius:2px}
-    .step-line.done{background:#22c55e}
-    .step-col{display:flex;flex-direction:column;align-items:center}
+  // Placeholder for description
+  const descPlaceholder = "Descrivi il lavoro da preventivare in modo dettagliato.\\nEs: Rifacimento bagno completo 8mq con demolizione, impermeabilizzazione, posa piastrelle 60x60 e installazione sanitari sospesi Ideal Standard...";
 
-    /* ── Pannelli step ── */
+  const extraCss = `
+    /* ── Step indicators ── */
+    .step-tabs{display:flex;gap:0;margin-bottom:28px;border-bottom:2px solid #e5e7eb}
+    .step-tab{flex:1;text-align:center;padding:14px 16px;font-size:.88rem;font-weight:600;color:#9ca3af;cursor:pointer;position:relative;transition:color .2s}
+    .step-tab.active{color:#0d9488}
+    .step-tab.active::after{content:'';position:absolute;bottom:-2px;left:0;right:0;height:2px;background:#0d9488}
+    .step-tab.done{color:#22c55e}
+
+    /* ── Step panels ── */
     .step-panel{display:none;animation:fadeIn .3s ease}
     .step-panel.active{display:block}
     @keyframes fadeIn{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:translateY(0)}}
 
-    /* ── Step 2 enhancements ── */
-    .desc-wrap{position:relative}
-    .desc-wrap textarea{padding-right:52px}
-    .voice-btn{position:absolute;right:10px;top:38px;width:36px;height:36px;border-radius:50%;border:none;background:#f0f1f3;color:#666;cursor:pointer;display:flex;align-items:center;justify-content:center;transition:all .2s;font-size:1.1rem}
-    .voice-btn:hover{background:#e4e5e9;color:#2563eb}
+    /* ── Prompt textarea ── */
+    .prompt-wrap{position:relative;margin-bottom:20px}
+    .prompt-wrap textarea{min-height:160px;resize:vertical;line-height:1.7;padding:16px;font-size:.95rem;border:2px solid #e5e7eb;border-radius:12px;transition:border-color .2s}
+    .prompt-wrap textarea:focus{border-color:#0d9488;box-shadow:0 0 0 3px rgba(13,148,136,.1)}
+    .prompt-wrap textarea::placeholder{color:#b0b8c4}
+    .voice-btn{position:absolute;right:12px;bottom:12px;width:36px;height:36px;border-radius:50%;border:none;background:#f0f1f3;color:#666;cursor:pointer;display:flex;align-items:center;justify-content:center;transition:all .2s;font-size:1.1rem}
+    .voice-btn:hover{background:#e4e5e9;color:#0d9488}
     .voice-btn.recording{background:#ef4444;color:#fff;animation:pulse-rec 1.2s ease-in-out infinite}
     @keyframes pulse-rec{0%,100%{box-shadow:0 0 0 0 rgba(239,68,68,.4)}50%{box-shadow:0 0 0 8px rgba(239,68,68,0)}}
     .char-counter{display:flex;justify-content:space-between;align-items:center;margin-top:6px;font-size:.75rem;color:#9ca3af}
     .char-counter .count{font-weight:500}
     .char-counter .count.good{color:#22c55e}
     .char-counter .count.short{color:#f59e0b}
-    .suggestion-chips{display:flex;flex-wrap:wrap;gap:6px;margin-top:10px}
-    .suggestion-chip{padding:5px 12px;border-radius:20px;font-size:.76rem;background:#f0f4ff;color:#2563eb;border:1px solid #dbeafe;cursor:pointer;transition:all .15s;font-weight:500}
-    .suggestion-chip:hover{background:#dbeafe;border-color:#93c5fd}
 
-    /* ── Preview card layout (Step 3) ── */
-    .preview-section{margin-top:20px}
-    .job-summary{background:linear-gradient(135deg,#f0f4ff,#f8f9ff);border:1px solid #dbeafe;border-radius:10px;padding:16px 20px;margin-bottom:20px}
-    .job-summary-label{font-size:.7rem;text-transform:uppercase;letter-spacing:.06em;color:#6b7280;margin-bottom:4px;font-weight:600}
-    .job-summary-text{font-size:.9rem;color:#1e1e2d;line-height:1.5;display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;overflow:hidden}
-    .client-summary{display:flex;align-items:center;gap:10px;background:#f8f9fb;border-radius:10px;padding:12px 18px;margin-bottom:16px;font-size:.88rem}
-    .client-avatar{width:32px;height:32px;border-radius:50%;background:linear-gradient(135deg,#2563eb,#7c3aed);color:#fff;display:flex;align-items:center;justify-content:center;font-weight:700;font-size:.82rem}
+    /* ── Price cards ── */
+    .price-cards-row{display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px}
+    @media(max-width:640px){.price-cards-row{grid-template-columns:1fr}}
+    .price-card{padding:16px;border:2px solid #e5e7eb;border-radius:12px;cursor:pointer;transition:all .2s;text-align:center}
+    .price-card:hover{border-color:#5eead4;transform:translateY(-1px)}
+    .price-card.selected{border-color:#0d9488;background:#f0fdfa}
+    .price-card-icon{font-size:1.5rem;margin-bottom:4px}
+    .price-card-title{font-weight:700;font-size:.88rem}
+    .price-card-desc{font-size:.75rem;color:#9ca3af;margin-top:2px}
 
-    /* ── Item cards ── */
+    /* ── Fiscal summary ── */
+    .fiscal-summary{background:linear-gradient(135deg,#f0fdfa,#f8fffe);border:1px solid #ccfbf1;border-radius:10px;padding:12px 18px;margin-top:14px;display:flex;align-items:center;gap:8px;font-size:.85rem;color:#115e59}
+
+    /* ── Profile setup inline ── */
+    .profile-setup{background:#fffbeb;border:1px solid #fde68a;border-radius:12px;padding:20px 24px;margin-bottom:24px}
+    .profile-setup h3{font-size:.95rem;font-weight:700;margin-bottom:4px}
+    .profile-setup p{font-size:.82rem;color:#92400e;margin-bottom:16px}
+
+    /* ── Loading overlay ── */
+    .loading{display:none;text-align:center;padding:60px 24px}
+    .loading.active{display:block}
+    .spinner{width:48px;height:48px;border:3px solid rgba(13,148,136,.15);border-top-color:#0d9488;border-radius:50%;animation:spin .8s linear infinite;margin:0 auto 20px}
+    @keyframes spin{to{transform:rotate(360deg)}}
+    .loading p{color:#888;font-size:.95rem}
+    .loading-sub{font-size:.82rem;color:#bbb;margin-top:8px}
+
+    /* ── CTA buttons ── */
+    #generateBtn{background:linear-gradient(135deg,#f59e0b,#d97706);box-shadow:0 2px 8px rgba(245,158,11,.3);color:#fff;border:none;font-size:.95rem;padding:14px 32px}
+    #generateBtn:hover{background:linear-gradient(135deg,#d97706,#b45309);box-shadow:0 4px 12px rgba(245,158,11,.4);transform:translateY(-1px)}
+    #generateBtn:disabled{opacity:.6;cursor:not-allowed;transform:none}
+
+    /* ── Preview item cards ── */
     .item-cards{display:flex;flex-direction:column;gap:10px;margin-bottom:20px}
     .item-card{background:#fff;border:1px solid #e5e7eb;border-radius:10px;padding:16px 18px;transition:all .2s}
     .item-card:hover{border-color:#d1d5db;box-shadow:0 2px 8px rgba(0,0,0,.04)}
     .item-card-header{display:flex;align-items:flex-start;justify-content:space-between;gap:10px;margin-bottom:10px}
     .item-card-desc{flex:1}
-    .item-card-desc input{border:1px solid transparent;background:transparent;padding:4px 8px;border-radius:6px;font-size:.9rem;font-family:inherit;font-weight:500;width:100%;transition:all .15s;color:#1e1e2d}
+    .item-card-desc input{border:1px solid transparent;background:transparent;padding:4px 8px;border-radius:6px;font-size:.9rem;font-family:inherit;font-weight:500;width:100%;transition:all .15s;color:#1c1917}
     .item-card-desc input:hover{border-color:#e5e7eb;background:#f9fafb}
-    .item-card-desc input:focus{border-color:#2563eb;outline:none;background:#fff;box-shadow:0 0 0 3px rgba(37,99,235,.08)}
+    .item-card-desc input:focus{border-color:#0d9488;outline:none;background:#fff;box-shadow:0 0 0 3px rgba(13,148,136,.08)}
     .item-card-actions{display:flex;gap:2px;flex-shrink:0}
     .item-card-actions button{background:none;border:none;cursor:pointer;width:28px;height:28px;border-radius:6px;display:flex;align-items:center;justify-content:center;color:#9ca3af;transition:all .15s;font-size:.88rem}
-    .item-card-actions button:hover{color:#2563eb;background:#f0f4ff}
-    .item-card-fields{display:grid;grid-template-columns:1fr 1fr 1fr 1fr 1fr;gap:8px}
+    .item-card-actions button:hover{color:#0d9488;background:#f0fdfa}
+    .item-card-fields{display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px}
     @media(max-width:640px){.item-card-fields{grid-template-columns:1fr 1fr;gap:6px}}
     .item-field{display:flex;flex-direction:column}
     .item-field-label{font-size:.68rem;text-transform:uppercase;letter-spacing:.04em;color:#9ca3af;margin-bottom:3px;font-weight:600}
     .item-field input{border:1px solid #e5e7eb;background:#f9fafb;padding:7px 10px;border-radius:6px;font-size:.85rem;font-family:inherit;text-align:right;transition:all .15s;width:100%}
-    .item-field input:focus{border-color:#2563eb;outline:none;background:#fff;box-shadow:0 0 0 3px rgba(37,99,235,.08)}
-    .item-field .subtotal-value{padding:7px 10px;font-size:.9rem;font-weight:600;color:#1e1e2d;text-align:right}
-    .item-card-badge{margin-top:8px}
-
-    /* ── Modified input highlight ── */
-    .item-field input.modified{background:#fffde7;border-color:#f59e0b}
+    .item-field input:focus{border-color:#0d9488;outline:none;background:#fff;box-shadow:0 0 0 3px rgba(13,148,136,.08)}
+    .item-field .subtotal-value{padding:7px 10px;font-size:.9rem;font-weight:600;color:#1c1917;text-align:right}
 
     /* ── Confidence badges ── */
     .conf-badge{display:inline-flex;align-items:center;gap:4px;padding:3px 10px;border-radius:12px;font-size:.72rem;font-weight:600;cursor:help}
@@ -173,7 +206,7 @@ router.get("/new", (req, res) => {
     .conf-badge.medium .conf-badge-dot{background:#f59e0b}
     .conf-badge.low .conf-badge-dot{background:#ef4444}
 
-    /* ── Needs input row ── */
+    /* ── Needs input bar ── */
     .needs-input-bar{background:#fffbeb;border:1px solid #fde68a;border-radius:8px;padding:10px 14px;margin-top:8px;display:flex;align-items:center;gap:8px;font-size:.82rem;flex-wrap:wrap}
     .needs-input-bar input{border:1px solid #fde68a;background:#fff;padding:5px 10px;border-radius:6px;font-size:.82rem;font-family:inherit;flex:1;min-width:160px}
     .needs-input-bar input:focus{border-color:#f59e0b;outline:none}
@@ -181,106 +214,110 @@ router.get("/new", (req, res) => {
     .needs-input-bar button:hover{background:#fde68a}
 
     /* ── Totals block ── */
-    .totals-card{background:linear-gradient(135deg,#1a1a2e,#16213e);border-radius:12px;padding:20px 24px;color:#fff;margin-bottom:20px}
+    .totals-card{background:linear-gradient(135deg,#1c1917,#292524);border-radius:12px;padding:20px 24px;color:#fff;margin-bottom:20px}
     .totals-row{display:flex;justify-content:space-between;padding:6px 0;font-size:.92rem;color:rgba(255,255,255,.7)}
     .totals-row.grand{font-size:1.5rem;font-weight:700;color:#fff;border-top:2px solid rgba(255,255,255,.25);padding-top:14px;margin-top:10px}
 
-    .notes-box{background:#f8f9fb;border-left:3px solid #2563eb;padding:14px 18px;border-radius:0 8px 8px 0;font-size:.9rem;line-height:1.6;margin-bottom:20px}
+    .notes-box textarea{min-height:80px;resize:vertical}
 
-    /* ── Section headings ── */
-    .section-heading{font-size:.72rem;text-transform:uppercase;letter-spacing:.08em;color:#9ca3af;font-weight:700;margin-bottom:10px;padding-bottom:6px;border-bottom:1px solid #f0f1f3;display:flex;align-items:center;gap:6px}
-    .section-heading svg{width:14px;height:14px;opacity:.5}
-
-    /* ── Loading overlay ── */
-    .loading{display:none;text-align:center;padding:48px 24px}
-    .loading.active{display:block}
-    .spinner{width:44px;height:44px;border:3px solid rgba(37,99,235,.15);border-top-color:#2563eb;border-radius:50%;animation:spin .8s linear infinite;margin:0 auto 16px}
-    @keyframes spin{to{transform:rotate(360deg)}}
-    .loading p{color:#888;font-size:.9rem}
-    .loading-dots{display:inline-flex;gap:4px;margin-top:12px}
-    .loading-dots span{width:6px;height:6px;background:#2563eb;border-radius:50%;animation:bounce .6s ease-in-out infinite}
-    .loading-dots span:nth-child(2){animation-delay:.1s}
-    .loading-dots span:nth-child(3){animation-delay:.2s}
-    @keyframes bounce{0%,100%{opacity:.3;transform:scale(.8)}50%{opacity:1;transform:scale(1.2)}}
-
-    /* ── Azioni ── */
-    .step-actions{display:flex;gap:12px;align-items:center;flex-wrap:wrap;margin-top:24px}
-
-    /* ── Barra azioni sopra cards ── */
+    /* ── Table actions ── */
     .table-actions{display:flex;gap:8px;margin-bottom:14px;flex-wrap:wrap}
     .table-actions button{display:inline-flex;align-items:center;gap:5px;padding:7px 16px;border-radius:8px;font-size:.8rem;font-weight:600;cursor:pointer;border:1px solid #e2e4e8;background:#fff;color:#444;transition:all .15s}
-    .table-actions button:hover{background:#f0f4ff;border-color:#2563eb;color:#2563eb}
-    .table-actions button svg{width:14px;height:14px}
+    .table-actions button:hover{background:#f0fdfa;border-color:#0d9488;color:#0d9488}
 
-    /* ── Autocomplete dropdown ── */
+    /* ── Section headings ── */
+    .section-heading{font-size:.72rem;text-transform:uppercase;letter-spacing:.08em;color:#9ca3af;font-weight:700;margin-bottom:10px;padding-bottom:6px;border-bottom:1px solid #f0f1f3}
+
+    /* ── Client summary ── */
+    .client-summary{display:flex;align-items:center;gap:10px;background:#f8f9fb;border-radius:10px;padding:12px 18px;margin-bottom:16px;font-size:.88rem}
+    .client-avatar{width:32px;height:32px;border-radius:50%;background:linear-gradient(135deg,#0d9488,#0891b2);color:#fff;display:flex;align-items:center;justify-content:center;font-weight:700;font-size:.82rem}
+
+    .job-summary{background:linear-gradient(135deg,#f0fdfa,#f8fffe);border:1px solid #ccfbf1;border-radius:10px;padding:14px 18px;margin-bottom:20px}
+    .job-summary-label{font-size:.7rem;text-transform:uppercase;letter-spacing:.06em;color:#6b7280;margin-bottom:4px;font-weight:600}
+    .job-summary-text{font-size:.9rem;color:#1c1917;line-height:1.5}
+
+    /* ── Success overlay ── */
+    .success-overlay{display:none;position:fixed;inset:0;background:rgba(255,255,255,.95);z-index:300;align-items:center;justify-content:center;flex-direction:column}
+    .success-overlay.show{display:flex}
+    .success-content{text-align:center;animation:fadeIn .4s ease}
+    .success-check{width:72px;height:72px;border-radius:50%;background:linear-gradient(135deg,#22c55e,#16a34a);color:#fff;display:flex;align-items:center;justify-content:center;font-size:2rem;margin:0 auto 16px}
+    .success-content h3{font-size:1.3rem;font-weight:700;margin-bottom:6px;color:#1c1917}
+    .success-content p{color:#888;font-size:.95rem}
+
+    /* ── Autocomplete ── */
     .ac-wrap{position:relative}
     .ac-dropdown{position:absolute;top:100%;left:0;right:0;background:#fff;border:1px solid #d1d5db;border-radius:0 0 8px 8px;box-shadow:0 4px 16px rgba(0,0,0,.12);z-index:50;max-height:220px;overflow-y:auto;display:none}
     .ac-dropdown.open{display:block}
     .ac-item{padding:10px 14px;cursor:pointer;font-size:.82rem;border-bottom:1px solid #f3f4f6;display:flex;justify-content:space-between;transition:background .1s}
-    .ac-item:hover{background:#f0f4ff}
+    .ac-item:hover{background:#f0fdfa}
     .ac-source{font-size:.7rem;color:#888;white-space:nowrap}
+
+    .toast{position:fixed;bottom:24px;left:50%;transform:translateX(-50%);background:#1c1917;color:#fff;padding:10px 24px;border-radius:8px;font-size:.85rem;opacity:0;transition:opacity .3s;pointer-events:none;z-index:100}
+    .toast.show{opacity:1}
   `;
 
   const content = `
   <div class="wrap" style="max-width:740px">
     <div class="card" style="padding:36px">
 
-      <!-- Stepper -->
-      <div class="stepper">
-        <div class="step-col">
-          <div class="step-circle active" id="sc1">1</div>
-          <div class="step-label active" id="sl1">Cliente</div>
-        </div>
-        <div class="step-line" id="line1"></div>
-        <div class="step-col">
-          <div class="step-circle" id="sc2">2</div>
-          <div class="step-label" id="sl2">Lavoro</div>
-        </div>
-        <div class="step-line" id="line2"></div>
-        <div class="step-col">
-          <div class="step-circle" id="sc3">3</div>
-          <div class="step-label" id="sl3">Anteprima</div>
-        </div>
+      <!-- Step tabs -->
+      <div class="step-tabs">
+        <div class="step-tab active" id="tab1" onclick="window._goStep(1)">1. Descrivi il lavoro</div>
+        <div class="step-tab" id="tab2">2. Anteprima e modifica</div>
       </div>
 
       <div id="error" class="alert alert-error" style="display:none"></div>
 
-      <!-- STEP 1: Cliente -->
+      <!-- ═══ STEP 1: Prompt ═══ -->
       <div class="step-panel active" id="panel1">
-        <h2 style="font-size:1.15rem;margin-bottom:4px;font-weight:700">Chi è il tuo cliente?</h2>
-        <p style="color:#888;font-size:.85rem;margin-bottom:24px">Inserisci i dati di contatto del cliente a cui vuoi inviare il preventivo.</p>
 
-        <div class="field">
-          <label for="clientName">Nome e cognome</label>
-          <input type="text" id="clientName" required placeholder="es. Mario Bianchi">
+        ${!profileCompleted ? `
+        <!-- Inline profile setup -->
+        <div class="profile-setup" id="profileSetup">
+          <h3>Configura il tuo profilo</h3>
+          <p>Servono professione e regime fiscale per generare preventivi corretti. Si compila una volta sola.</p>
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+            <div class="field" style="margin-bottom:0">
+              <label for="profileProfession">Professione</label>
+              <select id="profileProfession">
+                <option value="">Seleziona...</option>
+                ${professionOptions}
+              </select>
+            </div>
+            <div class="field" style="margin-bottom:0">
+              <label for="profileTaxProfile">Regime fiscale</label>
+              <select id="profileTaxProfile">
+                ${taxProfileOptions}
+              </select>
+            </div>
+          </div>
+          <button class="btn btn-primary" id="saveProfile" style="margin-top:14px">Salva profilo</button>
+        </div>` : ''}
+
+        <h2 style="font-size:1.15rem;margin-bottom:4px;font-weight:700">Dati cliente e lavoro</h2>
+        <p style="color:#888;font-size:.85rem;margin-bottom:24px">Inserisci le informazioni del cliente e descrivi il lavoro da preventivare.</p>
+
+        <!-- Client fields -->
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:16px">
+          <div class="field" style="margin-bottom:0">
+            <label for="clientName">Nome cliente *</label>
+            <input type="text" id="clientName" required placeholder="es. Mario Bianchi">
+          </div>
+          <div class="field" style="margin-bottom:0">
+            <label for="clientEmail">Email cliente</label>
+            <input type="email" id="clientEmail" placeholder="es. mario@email.com">
+            <div class="hint">Opzionale &mdash; per inviare il preventivo via email</div>
+          </div>
         </div>
         <div class="field">
-          <label for="clientEmail">Email</label>
-          <input type="email" id="clientEmail" required placeholder="es. mario@email.com">
+          <label for="clientPhone">Telefono (opzionale)</label>
+          <input type="tel" id="clientPhone" placeholder="es. 333 1234567">
         </div>
 
-        <div class="step-actions">
-          <button class="btn btn-primary" id="toStep2">Avanti</button>
-          <a href="/dashboard" class="btn btn-secondary">Annulla</a>
-        </div>
-      </div>
-
-      <!-- STEP 2: Lavoro -->
-      <div class="step-panel" id="panel2">
-        <h2 style="font-size:1.15rem;margin-bottom:4px;font-weight:700">Descrivi il lavoro</h2>
-        <p style="color:#888;font-size:.85rem;margin-bottom:24px">Più dettagli inserisci, più il preventivo sarà preciso e professionale.</p>
-
-        <div class="field">
-          <label for="profession">Professione</label>
-          <select id="profession">
-            <option value="">Seleziona professione</option>
-            ${professionOptions}
-          </select>
-        </div>
-
-        <div class="field desc-wrap">
-          <label for="desc">Descrizione del lavoro</label>
-          <textarea id="desc" required placeholder="${esc(categoryPlaceholders[userCategory] || categoryPlaceholders.altro)}" style="min-height:160px"></textarea>
+        <!-- Prompt textarea -->
+        <div class="field prompt-wrap">
+          <label for="desc">Descrizione del lavoro *</label>
+          <textarea id="desc" required placeholder="${esc(descPlaceholder)}" style="min-height:160px"></textarea>
           <button type="button" class="voice-btn" id="voiceBtn" title="Dettatura vocale">
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" y1="19" x2="12" y2="23"/><line x1="8" y1="23" x2="16" y2="23"/></svg>
           </button>
@@ -288,50 +325,78 @@ router.get("/new", (req, res) => {
             <span id="charHint">Minimo raccomandato: 50 caratteri</span>
             <span class="count" id="charCount">0</span>
           </div>
-          <div class="suggestion-chips" id="suggestionChips"></div>
         </div>
 
+        <!-- Settings row -->
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:16px">
+          <div class="field" style="margin-bottom:0">
+            <label for="taxProfile">Profilo fiscale</label>
+            <select id="taxProfile">
+              ${taxProfileOptions}
+            </select>
+            <div class="hint" id="taxProfileNote"></div>
+          </div>
+          <div class="field" style="margin-bottom:0">
+            <label for="paymentTerms">Condizioni di pagamento</label>
+            <select id="paymentTerms">
+              <option value="acconto_50">50% acconto + saldo a fine lavori</option>
+              <option value="bonifico_30">Bonifico bancario a 30 giorni</option>
+              <option value="bonifico_immediato">Bonifico bancario immediato</option>
+              <option value="acconto_30">30% acconto + saldo a fine lavori</option>
+              <option value="rata_30_60_90">Rata 30/60/90 giorni</option>
+              <option value="fine_lavori">Pagamento a fine lavori</option>
+              <option value="contanti">Contanti alla consegna</option>
+            </select>
+          </div>
+        </div>
+
+        <!-- Price level -->
         <div class="field">
-          <label for="taxProfile">Profilo fiscale</label>
-          <select id="taxProfile">
-            ${taxProfileOptions}
-          </select>
-          <div class="hint" id="taxProfileNote"></div>
+          <label>Fascia prezzo</label>
+          <div class="price-cards-row" id="priceCardsRow">
+            <div class="price-card" data-price="economico" onclick="window._selectPrice(this)">
+              <div class="price-card-icon">&#128176;</div>
+              <div class="price-card-title">Economico</div>
+              <div class="price-card-desc">Prezzi competitivi</div>
+            </div>
+            <div class="price-card selected" data-price="standard" onclick="window._selectPrice(this)">
+              <div class="price-card-icon">&#9878;</div>
+              <div class="price-card-title">Standard</div>
+              <div class="price-card-desc">Qualit&agrave; e prezzo in equilibrio</div>
+            </div>
+            <div class="price-card" data-price="premium" onclick="window._selectPrice(this)">
+              <div class="price-card-icon">&#11088;</div>
+              <div class="price-card-title">Premium</div>
+              <div class="price-card-desc">Servizio e qualit&agrave; top</div>
+            </div>
+          </div>
         </div>
 
-        <div class="field">
-          <label for="paymentTerms">Modalità di pagamento</label>
-          <select id="paymentTerms">
-            <option value="bonifico_30">Bonifico bancario a 30 giorni</option>
-            <option value="bonifico_immediato">Bonifico bancario immediato</option>
-            <option value="acconto_50">50% acconto + saldo a fine lavori</option>
-            <option value="acconto_30">30% acconto + saldo a fine lavori</option>
-            <option value="rata_30_60_90">Rata 30/60/90 giorni</option>
-            <option value="fine_lavori">Pagamento a fine lavori</option>
-            <option value="contanti">Contanti alla consegna</option>
-          </select>
+        <div class="fiscal-summary" id="fiscalSummary">
+          <span style="font-size:1.2rem">&#128196;</span>
+          <span id="fiscalSummaryText">Il preventivo includer&agrave;: IVA 22%</span>
         </div>
 
-        <div class="step-actions">
-          <button class="btn btn-primary" id="generateBtn">Genera preventivo</button>
-          <button class="btn btn-secondary" id="backTo1">Indietro</button>
+        <div style="display:flex;gap:12px;align-items:center;margin-top:24px">
+          <button class="btn" id="generateBtn">Genera preventivo</button>
+          <a href="/dashboard" class="btn btn-secondary">Annulla</a>
         </div>
       </div>
 
       <!-- Loading -->
       <div class="loading" id="loadingPanel">
         <div class="spinner"></div>
-        <p>Generazione in corso...</p>
-        <div class="loading-dots"><span></span><span></span><span></span></div>
+        <p>L'AI sta analizzando il lavoro...</p>
+        <div class="loading-sub">Generazione voci, costi e margini in corso</div>
       </div>
 
-      <!-- STEP 3: Anteprima -->
-      <div class="step-panel" id="panel3">
+      <!-- ═══ STEP 2: Preview & Edit ═══ -->
+      <div class="step-panel" id="panel2">
         <h2 style="font-size:1.15rem;margin-bottom:4px;font-weight:700">Anteprima del preventivo</h2>
-        <p style="color:#888;font-size:.85rem;margin-bottom:20px">Modifica costi e margini cliccando sui valori. I prezzi si aggiornano in automatico.</p>
+        <p style="color:#888;font-size:.85rem;margin-bottom:20px">Modifica descrizioni, quantit&agrave; e prezzi. I totali si aggiornano in automatico.</p>
 
-        <!-- Dettagli cliente -->
-        <div class="section-heading">Dettagli cliente</div>
+        <!-- Client summary -->
+        <div class="section-heading">Cliente</div>
         <div class="client-summary">
           <div class="client-avatar" id="clientAvatar"></div>
           <div>
@@ -340,124 +405,92 @@ router.get("/new", (req, res) => {
           </div>
         </div>
 
-        <!-- Riepilogo lavoro -->
+        <!-- Job summary -->
         <div class="job-summary">
           <div class="job-summary-label">Descrizione lavoro</div>
           <div class="job-summary-text" id="summaryJob"></div>
         </div>
 
-        <!-- Voci del preventivo -->
+        <!-- Item cards -->
         <div class="section-heading" style="margin-top:24px">Voci del preventivo</div>
-
-        <!-- Barra azioni -->
         <div class="table-actions">
           <button type="button" id="addRowBtn">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+            <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
             Aggiungi voce
           </button>
-          <button type="button" id="marginAllBtn">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2v20M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>
-            Margine % a tutte
+          <button type="button" id="regenBtn">
+            <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2"><polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg>
+            Rigenera con AI
           </button>
           <button type="button" id="exportCsvBtn">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+            <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
             CSV
           </button>
         </div>
+        <div class="item-cards" id="lineItems"></div>
 
-        <!-- Card voci -->
-        <div class="preview-section">
-          <div class="item-cards" id="lineItems"></div>
-
-          <div class="section-heading" style="margin-top:20px">Riepilogo costi</div>
-          <div id="totalsCard" class="totals-card">
-            <div class="totals-row"><span>Imponibile</span><span id="subtotal"></span></div>
-            <div class="totals-row" id="cassaRow" style="display:none"><span>Contributo cassa 4%</span><span id="cassaAmount"></span></div>
-            <div class="totals-row"><span id="ivaLabel">IVA 22%</span><span id="taxes"></span></div>
-            <div class="totals-row grand"><span>Totale</span><span id="total"></span></div>
-          </div>
-
-          <div id="generationBadge" style="text-align:center;margin-top:16px">
-            <span id="genBadgeText" style="display:inline-block;padding:6px 16px;border-radius:20px;font-size:.78rem;font-weight:600;letter-spacing:.02em"></span>
-          </div>
+        <!-- Totals -->
+        <div class="section-heading" style="margin-top:20px">Riepilogo fiscale</div>
+        <div id="totalsCard" class="totals-card">
+          <div class="totals-row"><span>Imponibile</span><span id="subtotal"></span></div>
+          <div class="totals-row" id="cassaRow" style="display:none"><span id="cassaLabel">Cassa previdenziale 4%</span><span id="cassaAmount"></span></div>
+          <div class="totals-row"><span id="ivaLabel">IVA 22%</span><span id="taxes"></span></div>
+          <div class="totals-row grand"><span>Totale</span><span id="total"></span></div>
         </div>
 
-        <div class="step-actions">
-          <button class="btn btn-primary" id="confirmBtn">Conferma e salva</button>
-          <button class="btn btn-secondary" id="backTo2">Modifica descrizione</button>
+        <!-- Notes -->
+        <div class="field notes-box">
+          <label for="notesField">Note e condizioni</label>
+          <textarea id="notesField" placeholder="Note aggiuntive per il cliente..."></textarea>
+        </div>
+
+        <!-- Actions -->
+        <div style="display:flex;gap:12px;align-items:center;flex-wrap:wrap;margin-top:24px">
+          <button class="btn btn-primary" id="confirmBtn" style="background:linear-gradient(135deg,#f59e0b,#d97706);box-shadow:0 2px 8px rgba(245,158,11,.3);border-color:#d97706">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="vertical-align:middle;margin-right:6px"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
+            Salva e invia
+          </button>
+          <button class="btn btn-secondary" id="saveDraftBtn">Salva bozza</button>
+          <button class="btn btn-secondary" id="backToStep1">Modifica dati</button>
+        </div>
+      </div>
+
+      <!-- Success overlay -->
+      <div class="success-overlay" id="successOverlay">
+        <div class="success-content">
+          <div class="success-check">&#10003;</div>
+          <h3>Preventivo creato!</h3>
+          <p id="successMsg">Preventivo inviato al cliente.</p>
         </div>
       </div>
 
     </div>
-  </div>`;
+  </div>
+  <div class="toast" id="toast"></div>`;
 
   const script = `
   (function() {
-    var currentStep = 1;
+    var profileCompleted = ${profileCompleted};
     var previewData = null;
     var localItems = [];
     var acTimer = null;
+    var selectedPriceLevel = 'standard';
 
-    var panels = [null, document.getElementById('panel1'), document.getElementById('panel2'), document.getElementById('panel3')];
-    var circles = [null, document.getElementById('sc1'), document.getElementById('sc2'), document.getElementById('sc3')];
-    var labels = [null, document.getElementById('sl1'), document.getElementById('sl2'), document.getElementById('sl3')];
-    var lines = [null, document.getElementById('line1'), document.getElementById('line2')];
-    var loadingPanel = document.getElementById('loadingPanel');
-    var errEl = document.getElementById('error');
-
-    // ── Category placeholders ──
-    var categoryPlaceholders = ${JSON.stringify(categoryPlaceholders)};
-
-    // ── Tax profiles data ──
     var taxProfilesData = ${JSON.stringify(taxProfiles)};
 
-    // ── Map profession → category for placeholders/chips ──
-    var professionToCategory = {
-      // Artigiani
-      idraulico: 'idraulico', elettricista: 'elettricista', muratore: 'edilizia',
-      falegname: 'falegname', imbianchino: 'imbianchino', fabbro: 'edilizia',
-      piastrellista: 'edilizia', giardiniere: 'giardiniere', serramentista: 'falegname',
-      // Tecnici
-      geometra: 'tecnici', ingegnere: 'tecnici', architetto: 'tecnici',
-      'perito industriale': 'tecnici', 'tecnico informatico': 'tecnici',
-      // Consulenti
-      avvocato: 'consulenti', commercialista: 'consulenti', 'consulente aziendale': 'consulenti',
-      'consulente IT': 'consulenti', 'consulente del lavoro': 'consulenti', notaio: 'consulenti',
-      // Sanitario
-      medico: 'sanitario', odontoiatra: 'sanitario', psicologo: 'sanitario',
-      fisioterapista: 'sanitario', veterinario: 'sanitario',
-      // Digital & Creativi
-      grafico: 'digital', fotografo: 'digital', 'web designer': 'digital',
-      videomaker: 'digital', traduttore: 'digital', copywriter: 'digital'
+    // ── Payment terms labels ──
+    var paymentLabels = {
+      bonifico_30: 'Bonifico bancario a 30 giorni',
+      bonifico_immediato: 'Bonifico bancario immediato',
+      acconto_50: '50% acconto + saldo a fine lavori',
+      acconto_30: '30% acconto + saldo a fine lavori',
+      rata_30_60_90: 'Rata 30/60/90 giorni',
+      fine_lavori: 'Pagamento a fine lavori',
+      contanti: 'Contanti alla consegna'
     };
-
-    // ── Suggestion chips per category ──
-    var categorySuggestions = {
-      idraulico: ["metratura bagno/cucina", "tipo sanitari", "marca rubinetteria", "tubazioni da sostituire", "scarichi da rifare"],
-      elettricista: ["numero punti luce", "prese da installare", "tipo quadro elettrico", "domotica", "certificazione"],
-      edilizia: ["metratura locale", "tipo pavimento", "demolizioni necessarie", "cartongesso", "isolamento"],
-      imbianchino: ["metratura pareti", "numero stanze", "tipo pittura", "rasatura necessaria", "colori desiderati"],
-      falegname: ["dimensioni mobili", "tipo legno", "ante/cassetti", "ferramenta", "finitura desiderata"],
-      giardiniere: ["metratura giardino", "impianto irrigazione", "tipo prato", "piante desiderate", "illuminazione esterna"],
-      tecnici: ["tipo di immobile", "metratura", "pratiche necessarie", "sopralluogo richiesto", "tempistiche"],
-      consulenti: ["tipo di pratica", "complessità caso", "numero udienze/riunioni", "urgenza", "documentazione esistente"],
-      sanitario: ["tipo trattamento", "numero sedute", "esami necessari", "urgenza", "patologia/zona"],
-      digital: ["tipo di progetto", "numero pagine/contenuti", "revisioni previste", "formato consegna", "stile/riferimenti"],
-      altro: ["metratura", "materiali preferiti", "tempistiche desiderate", "budget indicativo"]
-    };
-
-    function getCategoryFromProfession() {
-      var prof = document.getElementById('profession').value;
-      return professionToCategory[prof] || 'altro';
-    }
-
-    function updateSuggestionChips() {
-      var cat = getCategoryFromProfession();
-      var chips = categorySuggestions[cat] || categorySuggestions.altro;
-      var container = document.getElementById('suggestionChips');
-      container.innerHTML = chips.map(function(chip) {
-        return '<span class="suggestion-chip" data-chip="' + escHtml(chip) + '">' + escHtml(chip) + '</span>';
-      }).join('');
+    function getPaymentTermsLabel() {
+      var val = document.getElementById('paymentTerms').value;
+      return paymentLabels[val] || val;
     }
 
     function getSelectedTaxProfile() {
@@ -471,56 +504,28 @@ router.get("/new", (req, res) => {
     function updateTaxProfileNote() {
       var tp = getSelectedTaxProfile();
       var noteEl = document.getElementById('taxProfileNote');
-      noteEl.textContent = tp.note || '';
+      if (noteEl) noteEl.textContent = tp.note || '';
     }
 
-    // ── Payment terms labels ──
-    var paymentLabels = {
-      bonifico_30: 'Bonifico bancario a 30 giorni',
-      bonifico_immediato: 'Bonifico bancario immediato',
-      acconto_50: '50% acconto + saldo a fine lavori',
-      acconto_30: '30% acconto + saldo a fine lavori',
-      rata_30_60_90: 'Rata 30/60/90 giorni',
-      fine_lavori: 'Pagamento a fine lavori',
-      contanti: 'Contanti alla consegna'
-    };
-
-    function getPaymentTermsLabel() {
-      var val = document.getElementById('paymentTerms').value;
-      return paymentLabels[val] || val;
+    function updateFiscalSummary() {
+      var tp = getSelectedTaxProfile();
+      var iva = tp.iva_percent || 0;
+      var cassa = tp.previdenza_percent || 0;
+      var parts = [];
+      if (iva > 0) parts.push('IVA ' + iva + '%');
+      else parts.push('IVA esente');
+      if (cassa > 0) parts.push('Cassa ' + cassa + '%');
+      document.getElementById('fiscalSummaryText').textContent = 'Il preventivo includera: ' + parts.join(' + ');
     }
 
-    // Init chips + tax note
-    updateSuggestionChips();
+    // Init
     updateTaxProfileNote();
+    updateFiscalSummary();
 
-    // Chip click → append to textarea
-    document.getElementById('suggestionChips').addEventListener('click', function(e) {
-      var chip = e.target.closest('.suggestion-chip');
-      if (!chip) return;
-      var desc = document.getElementById('desc');
-      var text = chip.getAttribute('data-chip');
-      if (desc.value.trim()) {
-        desc.value += ', ' + text;
-      } else {
-        desc.value = text + ': ';
-      }
-      desc.focus();
-      updateCharCounter();
-    });
-
-    // Profession change → update placeholder & chips
-    document.getElementById('profession').addEventListener('change', function() {
-      var cat = getCategoryFromProfession();
-      var desc = document.getElementById('desc');
-      desc.placeholder = categoryPlaceholders[cat] || categoryPlaceholders.altro;
-      updateSuggestionChips();
-    });
-
-    // Tax profile change → update note
+    // Tax profile change
     document.getElementById('taxProfile').addEventListener('change', function() {
       updateTaxProfileNote();
-      // If preview is already rendered, recalc totals
+      updateFiscalSummary();
       if (previewData) updateTotalsDisplay();
     });
 
@@ -540,7 +545,7 @@ router.get("/new", (req, res) => {
     }
     document.getElementById('desc').addEventListener('input', updateCharCounter);
 
-    // ── Voice input (Web Speech API) ──
+    // ── Voice input ──
     var voiceBtn = document.getElementById('voiceBtn');
     var recognition = null;
     var isRecording = false;
@@ -551,130 +556,98 @@ router.get("/new", (req, res) => {
       recognition.lang = 'it-IT';
       recognition.continuous = true;
       recognition.interimResults = true;
-
       var finalTranscript = '';
-
       recognition.onresult = function(event) {
         var interim = '';
         for (var i = event.resultIndex; i < event.results.length; i++) {
-          if (event.results[i].isFinal) {
-            finalTranscript += event.results[i][0].transcript;
-          } else {
-            interim += event.results[i][0].transcript;
-          }
+          if (event.results[i].isFinal) finalTranscript += event.results[i][0].transcript;
+          else interim += event.results[i][0].transcript;
         }
-        // Append final results to textarea
         if (finalTranscript) {
           var desc = document.getElementById('desc');
           var existing = desc.value;
-          if (existing && !existing.endsWith(' ') && !existing.endsWith('\\n')) {
-            desc.value = existing + ' ' + finalTranscript;
-          } else {
-            desc.value = existing + finalTranscript;
-          }
+          if (existing && !existing.endsWith(' ') && !existing.endsWith('\\n')) desc.value = existing + ' ' + finalTranscript;
+          else desc.value = existing + finalTranscript;
           finalTranscript = '';
           updateCharCounter();
         }
       };
-
-      recognition.onerror = function() {
-        stopRecording();
-      };
-
-      recognition.onend = function() {
-        if (isRecording) {
-          // Auto-restart if still recording
-          try { recognition.start(); } catch(e) { stopRecording(); }
-        }
-      };
-
-      voiceBtn.addEventListener('click', function() {
-        if (isRecording) {
-          stopRecording();
-        } else {
-          startRecording();
-        }
-      });
+      recognition.onerror = function() { stopRecording(); };
+      recognition.onend = function() { if (isRecording) try { recognition.start(); } catch(e) { stopRecording(); } };
+      voiceBtn.addEventListener('click', function() { isRecording ? stopRecording() : startRecording(); });
     } else {
       voiceBtn.style.display = 'none';
     }
+    function startRecording() { if (!recognition) return; isRecording = true; finalTranscript = ''; voiceBtn.classList.add('recording'); voiceBtn.title = 'Interrompi dettatura'; try { recognition.start(); } catch(e) {} }
+    function stopRecording() { isRecording = false; voiceBtn.classList.remove('recording'); voiceBtn.title = 'Dettatura vocale'; if (recognition) try { recognition.stop(); } catch(e) {} }
 
-    function startRecording() {
-      if (!recognition) return;
-      isRecording = true;
-      finalTranscript = '';
-      voiceBtn.classList.add('recording');
-      voiceBtn.title = 'Interrompi dettatura';
-      try { recognition.start(); } catch(e) {}
-    }
+    // ── Price card selection ──
+    window._selectPrice = function(card) {
+      document.querySelectorAll('.price-card').forEach(function(c) { c.classList.remove('selected'); });
+      card.classList.add('selected');
+      selectedPriceLevel = card.getAttribute('data-price');
+    };
 
-    function stopRecording() {
-      isRecording = false;
-      voiceBtn.classList.remove('recording');
-      voiceBtn.title = 'Dettatura vocale';
-      if (recognition) try { recognition.stop(); } catch(e) {}
-    }
+    // ── Step navigation ──
+    window._goStep = function(n) {
+      if (n === 2 && !previewData) return; // Can't go to step 2 without data
+      document.querySelectorAll('.step-panel').forEach(function(p) { p.classList.remove('active'); });
+      document.querySelectorAll('.step-tab').forEach(function(t) { t.classList.remove('active'); });
+      document.getElementById('panel' + n).classList.add('active');
+      document.getElementById('tab' + n).classList.add('active');
+      if (n === 1) document.getElementById('tab2').classList.remove('done');
+      document.getElementById('error').style.display = 'none';
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+    };
 
-    function goToStep(n) {
-      errEl.style.display = 'none';
-      loadingPanel.classList.remove('active');
+    // ── Profile setup (inline) ──
+    ${!profileCompleted ? `
+    document.getElementById('saveProfile').addEventListener('click', function() {
+      var prof = document.getElementById('profileProfession').value;
+      if (!prof) { showError('Seleziona la tua professione'); return; }
+      var tp = document.getElementById('profileTaxProfile').value;
+      var btn = this;
+      btn.disabled = true; btn.textContent = 'Salvataggio...';
+      fetch('/quotes/setup-profile', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ profession: prof, taxProfile: tp, cassaPercent: 0, ivaPercent: 22 })
+      })
+      .then(function(r) { return r.json(); })
+      .then(function(data) {
+        if (data.success) {
+          profileCompleted = true;
+          document.getElementById('profileSetup').style.display = 'none';
+          document.getElementById('taxProfile').value = tp;
+          updateTaxProfileNote();
+          updateFiscalSummary();
+        } else {
+          showError(data.error || 'Errore');
+          btn.disabled = false; btn.textContent = 'Salva profilo';
+        }
+      })
+      .catch(function() { showError('Errore di rete'); btn.disabled = false; btn.textContent = 'Salva profilo'; });
+    });` : ''}
 
-      for (var i = 1; i <= 3; i++) {
-        panels[i].classList.remove('active');
-        circles[i].classList.remove('active', 'done');
-        labels[i].classList.remove('active', 'done');
-      }
-      for (var j = 1; j <= 2; j++) {
-        lines[j].classList.remove('done');
-      }
-
-      for (var i = 1; i < n; i++) {
-        circles[i].classList.add('done');
-        circles[i].innerHTML = '&#10003;';
-        labels[i].classList.add('done');
-        if (lines[i]) lines[i].classList.add('done');
-      }
-      circles[n].classList.add('active');
-      circles[n].textContent = n;
-      labels[n].classList.add('active');
-      for (var i = n + 1; i <= 3; i++) {
-        circles[i].textContent = i;
-      }
-
-      panels[n].classList.add('active');
-      currentStep = n;
-    }
-
-    // Step 1 → 2
-    document.getElementById('toStep2').addEventListener('click', function() {
-      var name = document.getElementById('clientName').value.trim();
-      var email = document.getElementById('clientEmail').value.trim();
-      if (!name) { showError('Inserisci il nome del cliente'); return; }
-      if (!email || !email.includes('@')) { showError('Inserisci un indirizzo email valido'); return; }
-      goToStep(2);
-    });
-
-    // Step 2 → back to 1
-    document.getElementById('backTo1').addEventListener('click', function() {
-      goToStep(1);
-    });
-
-    // Step 2 → Generate (loading → step 3)
-    document.getElementById('generateBtn').addEventListener('click', function() {
+    // ── Generate ──
+    function doGenerate() {
       var desc = document.getElementById('desc').value.trim();
+      var clientName = document.getElementById('clientName').value.trim();
+      if (!clientName) { showError('Inserisci il nome del cliente'); return; }
       if (!desc) { showError('Inserisci la descrizione del lavoro'); return; }
-
-      // Stop recording if active
       if (isRecording) stopRecording();
 
-      errEl.style.display = 'none';
-      panels[2].classList.remove('active');
-      loadingPanel.classList.add('active');
+      document.getElementById('error').style.display = 'none';
+      document.getElementById('panel1').classList.remove('active');
+      document.getElementById('loadingPanel').classList.add('active');
 
       var body = {
         job_description: desc,
-        pricing_preset: 'standard',
-        profession: document.getElementById('profession').value,
+        pricing_preset: selectedPriceLevel,
+        priceLevel: selectedPriceLevel,
+        urgency: 'normale',
+        profession: '${esc(user.category || "")}',
+        jobType: '',
         tax_profile_id: document.getElementById('taxProfile').value,
         payment_terms: getPaymentTermsLabel()
       };
@@ -686,112 +659,60 @@ router.get("/new", (req, res) => {
       })
       .then(function(r) { return r.json(); })
       .then(function(data) {
+        document.getElementById('loadingPanel').classList.remove('active');
         if (data.success) {
           previewData = data;
           localItems = data.preview.line_items.map(function(it) {
             return {
               description: it.description,
               quantity: it.quantity || 1,
-              unit_cost: it.unit_cost || 0,
-              margin_percent: it.margin_percent || 0,
               unit_price: it.unit_price || 0,
               subtotal: it.subtotal || 0,
               confidence: it.confidence || null,
               explanation: it.explanation || null,
               needs_input: it.needs_input || false,
-              ai_suggested: it.ai_suggested || null
+              _unit_cost: it.unit_cost || 0,
+              _margin_percent: it.margin_percent || 0,
+              _ai_suggested: it.ai_suggested || null
             };
           });
+          // Set notes if AI returned them
+          if (data.preview.notes) document.getElementById('notesField').value = data.preview.notes;
           renderPreview();
-          goToStep(3);
+          // Go to step 2
+          document.querySelectorAll('.step-panel').forEach(function(p) { p.classList.remove('active'); });
+          document.getElementById('panel2').classList.add('active');
+          document.getElementById('tab1').classList.remove('active');
+          document.getElementById('tab1').classList.add('done');
+          document.getElementById('tab2').classList.add('active');
+          window.scrollTo({ top: 0, behavior: 'smooth' });
         } else {
-          loadingPanel.classList.remove('active');
-          panels[2].classList.add('active');
+          document.getElementById('panel1').classList.add('active');
           showError(data.error || data.detail || 'Errore durante la generazione');
         }
       })
       .catch(function() {
-        loadingPanel.classList.remove('active');
-        panels[2].classList.add('active');
+        document.getElementById('loadingPanel').classList.remove('active');
+        document.getElementById('panel1').classList.add('active');
         showError('Errore di rete. Riprova.');
       });
+    }
+
+    document.getElementById('generateBtn').addEventListener('click', doGenerate);
+    document.getElementById('regenBtn').addEventListener('click', doGenerate);
+
+    // ── Back to step 1 ──
+    document.getElementById('backToStep1').addEventListener('click', function() {
+      window._goStep(1);
     });
 
-    // Step 3 → back to 2
-    document.getElementById('backTo2').addEventListener('click', function() {
-      goToStep(2);
-    });
-
-    // Step 3 → Confirm
-    document.getElementById('confirmBtn').addEventListener('click', function() {
-      var btn = document.getElementById('confirmBtn');
-      btn.disabled = true;
-      btn.textContent = 'Salvataggio in corso...';
-      errEl.style.display = 'none';
-
-      var tp = getSelectedTaxProfile();
-      var sub = calcSubtotal();
-      var cassaAmount = tp.previdenza_percent ? round2(sub * tp.previdenza_percent / 100) : 0;
-      var taxableForIva = round2(sub + cassaAmount);
-      var tax = round2(taxableForIva * tp.iva_percent / 100);
-
-      var body = {
-        job_description: previewData.job_description,
-        pricing_preset: previewData.pricing_preset || 'standard',
-        ai_generated: previewData.ai_generated,
-        profession: document.getElementById('profession').value,
-        tax_profile: tp,
-        client: {
-          name: document.getElementById('clientName').value.trim(),
-          email: document.getElementById('clientEmail').value.trim()
-        },
-        preview: {
-          line_items: localItems,
-          subtotal: sub,
-          cassa: cassaAmount,
-          taxes: tax,
-          total: round2(sub + cassaAmount + tax),
-          currency: previewData.preview.currency || 'EUR',
-          payment_terms: getPaymentTermsLabel(),
-          validity_days: previewData.preview.validity_days || 14,
-          notes: previewData.preview.notes || null
-        }
-      };
-
-      fetch('/quotes/create', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(body)
-      })
-      .then(function(r) { return r.json(); })
-      .then(function(result) {
-        if (result.success) {
-          window.location.href = '/dashboard';
-        } else {
-          showError(result.error || 'Errore durante il salvataggio');
-          btn.disabled = false;
-          btn.textContent = 'Conferma e salva';
-        }
-      })
-      .catch(function() {
-        showError('Errore di rete. Riprova.');
-        btn.disabled = false;
-        btn.textContent = 'Conferma e salva';
-      });
-    });
-
-    // ── Render preview with card layout ──
+    // ── Render preview ──
     function renderPreview() {
-      var p = previewData.preview;
-
-      // Client summary
       var clientName = document.getElementById('clientName').value;
       var clientEmail = document.getElementById('clientEmail').value;
       document.getElementById('summaryClient').textContent = clientName;
-      document.getElementById('summaryEmail').textContent = clientEmail;
+      document.getElementById('summaryEmail').textContent = clientEmail || 'Email non specificata';
       document.getElementById('clientAvatar').textContent = clientName.charAt(0).toUpperCase();
-
-      // Job summary
       document.getElementById('summaryJob').textContent = document.getElementById('desc').value;
 
       var container = document.getElementById('lineItems');
@@ -802,20 +723,10 @@ router.get("/new", (req, res) => {
         card.className = 'item-card';
         card.setAttribute('data-idx', idx);
 
-        // Store AI originals for diff
-        if (item.ai_suggested) {
-          card.setAttribute('data-ai-cost', item.ai_suggested.unit_cost);
-          card.setAttribute('data-ai-margin', item.ai_suggested.margin_percent);
-        }
-
-        // Confidence badge HTML
         var confHtml = '';
         if (item.confidence) {
           var confLabels = { high: 'Alta', medium: 'Media', low: 'Bassa' };
-          confHtml = '<span class="conf-badge ' + item.confidence + '" title="' + escHtml(item.explanation || '') + '">' +
-            '<span class="conf-badge-dot"></span>' +
-            'Stima: ' + (confLabels[item.confidence] || item.confidence) +
-            '</span>';
+          confHtml = '<span class="conf-badge ' + item.confidence + '" title="' + escHtml(item.explanation || '') + '"><span class="conf-badge-dot"></span>Stima: ' + (confLabels[item.confidence] || item.confidence) + '</span>';
         }
 
         card.innerHTML =
@@ -827,129 +738,48 @@ router.get("/new", (req, res) => {
             '<div class="item-card-actions">' +
               '<button type="button" title="Duplica" onclick="window._dupRow(' + idx + ')">&#x2398;</button>' +
               '<button type="button" title="Elimina" onclick="window._delRow(' + idx + ')">&#x2715;</button>' +
-              (item.ai_suggested ? '<button type="button" title="Ripristina AI" onclick="window._resetRow(' + idx + ')">&#x21ba;</button>' : '') +
             '</div>' +
           '</div>' +
           '<div class="item-card-fields">' +
-            '<div class="item-field">' +
-              '<span class="item-field-label">Quantità</span>' +
-              '<input type="number" class="prev-qty" data-idx="' + idx + '" value="' + item.quantity + '" min="1" step="1">' +
-            '</div>' +
-            '<div class="item-field">' +
-              '<span class="item-field-label">Costo</span>' +
-              '<input type="number" class="prev-cost" data-idx="' + idx + '" value="' + item.unit_cost + '" min="0" step="0.01">' +
-            '</div>' +
-            '<div class="item-field">' +
-              '<span class="item-field-label">Margine %</span>' +
-              '<input type="number" class="prev-margin" data-idx="' + idx + '" value="' + item.margin_percent + '" min="0" max="90" step="0.1">' +
-            '</div>' +
-            '<div class="item-field">' +
-              '<span class="item-field-label">Prezzo unit.</span>' +
-              '<input type="number" class="prev-price" data-idx="' + idx + '" value="' + item.unit_price + '" min="0" step="0.01">' +
-            '</div>' +
-            '<div class="item-field">' +
-              '<span class="item-field-label">Subtotale</span>' +
-              '<div class="subtotal-value prev-subtotal">' + fmtNum(item.subtotal) + ' &euro;</div>' +
-            '</div>' +
+            '<div class="item-field"><span class="item-field-label">Quantita</span><input type="number" class="prev-qty" data-idx="' + idx + '" value="' + item.quantity + '" min="1" step="1"></div>' +
+            '<div class="item-field"><span class="item-field-label">Prezzo unit.</span><input type="number" class="prev-price" data-idx="' + idx + '" value="' + item.unit_price + '" min="0" step="0.01"></div>' +
+            '<div class="item-field"><span class="item-field-label">Subtotale</span><div class="subtotal-value prev-subtotal">' + fmtNum(item.subtotal) + ' &euro;</div></div>' +
           '</div>' +
-          (confHtml ? '<div class="item-card-badge">' + confHtml + '</div>' : '');
+          (confHtml ? '<div style="margin-top:8px">' + confHtml + '</div>' : '');
 
         container.appendChild(card);
 
-        // Apply diff styling
-        applyDiff(card, item);
-
-        // needs_input bar
         if (item.needs_input || item.confidence === 'low') {
           var niDiv = document.createElement('div');
           niDiv.className = 'needs-input-bar';
-          niDiv.setAttribute('data-ni-idx', idx);
-          niDiv.innerHTML =
-            '<span>&#9888; Stima incerta</span>' +
-            '<input type="text" class="ni-input" data-idx="' + idx + '" placeholder="Aggiungi dettagli per migliorare la stima...">' +
-            '<button type="button" onclick="window._reEstimate(' + idx + ',this)">Ricalcola</button>';
+          niDiv.innerHTML = '<span>&#9888; Stima incerta</span><input type="text" class="ni-input" data-idx="' + idx + '" placeholder="Aggiungi dettagli..."><button type="button" onclick="window._reEstimate(' + idx + ',this)">Ricalcola</button>';
           card.appendChild(niDiv);
         }
       });
 
       updateTotalsDisplay();
-
-      // Badge tipo generazione
-      var badge = document.getElementById('genBadgeText');
-      if (previewData.has_user_profile) {
-        badge.textContent = 'Suggerimento personalizzato';
-        badge.style.background = '#ecfdf5';
-        badge.style.color = '#065f46';
-      } else {
-        badge.textContent = 'Automatico';
-        badge.style.background = '#f0f4ff';
-        badge.style.color = '#1e40af';
-      }
     }
 
-    // ── Diff visuale ──
-    function applyDiff(card, item) {
-      var aiCost = parseFloat(card.getAttribute('data-ai-cost'));
-      var aiMargin = parseFloat(card.getAttribute('data-ai-margin'));
-      if (isNaN(aiCost)) return;
-      var costInput = card.querySelector('.prev-cost');
-      var marginInput = card.querySelector('.prev-margin');
-      if (costInput) {
-        if (parseFloat(costInput.value) !== aiCost) {
-          costInput.classList.add('modified');
-          costInput.title = 'Suggerimento AI: ' + aiCost;
-        } else {
-          costInput.classList.remove('modified');
-          costInput.title = '';
-        }
-      }
-      if (marginInput) {
-        if (parseFloat(marginInput.value) !== aiMargin) {
-          marginInput.classList.add('modified');
-          marginInput.title = 'Suggerimento AI: ' + aiMargin;
-        } else {
-          marginInput.classList.remove('modified');
-          marginInput.title = '';
-        }
-      }
-    }
-
-    // ── Client-side recalculation + diff ──
+    // ── Client-side recalculation ──
     document.getElementById('lineItems').addEventListener('input', function(e) {
       var idx = parseInt(e.target.dataset.idx);
       if (isNaN(idx) || !localItems[idx]) return;
-
       var item = localItems[idx];
       var card = e.target.closest('.item-card');
 
       if (e.target.classList.contains('prev-desc')) {
         item.description = e.target.value;
-        // Autocomplete trigger with debounce
         clearTimeout(acTimer);
         acTimer = setTimeout(function() { doAutocomplete(idx, e.target.value); }, 300);
         return;
       }
-
       if (e.target.classList.contains('prev-qty')) {
         item.quantity = Math.max(1, parseInt(e.target.value) || 1);
-      } else if (e.target.classList.contains('prev-cost') || e.target.classList.contains('prev-margin')) {
-        item.unit_cost = Math.max(0, parseFloat(card.querySelector('.prev-cost').value) || 0);
-        item.margin_percent = Math.min(90, Math.max(0, parseFloat(card.querySelector('.prev-margin').value) || 0));
-        item.unit_price = round2(item.unit_cost * (1 + item.margin_percent / 100));
-        card.querySelector('.prev-price').value = item.unit_price;
       } else if (e.target.classList.contains('prev-price')) {
         item.unit_price = Math.max(0, parseFloat(e.target.value) || 0);
-        if (item.unit_cost > 0) {
-          item.margin_percent = round2(Math.min(90, Math.max(0, ((item.unit_price - item.unit_cost) / item.unit_cost) * 100)));
-        } else {
-          item.margin_percent = 0;
-        }
-        card.querySelector('.prev-margin').value = item.margin_percent;
       }
-
       item.subtotal = round2(item.quantity * item.unit_price);
       card.querySelector('.prev-subtotal').innerHTML = fmtNum(item.subtotal) + ' &euro;';
-      applyDiff(card, item);
       updateTotalsDisplay();
     });
 
@@ -957,17 +787,13 @@ router.get("/new", (req, res) => {
     function doAutocomplete(idx, q) {
       var dd = document.getElementById('ac-' + idx);
       if (!dd || q.trim().length < 2) { if (dd) dd.classList.remove('open'); return; }
-
       fetch('/quotes/item-search?q=' + encodeURIComponent(q.trim()))
         .then(function(r) { return r.json(); })
         .then(function(data) {
           if (!data.success || !data.items.length) { dd.classList.remove('open'); dd.innerHTML = ''; return; }
           dd.innerHTML = data.items.map(function(it, i) {
             var srcLabel = it.source === 'priceList' ? 'Listino' : (it.occurrences + 'x usato');
-            return '<div class="ac-item" data-ac-idx="' + idx + '" data-ac-item="' + i + '">' +
-              '<span>' + escHtml(it.description) + '</span>' +
-              '<span class="ac-source">' + srcLabel + ' &middot; ' + fmtNum(it.last_unit_price) + '&euro;</span>' +
-            '</div>';
+            return '<div class="ac-item" data-ac-idx="' + idx + '" data-ac-item="' + i + '"><span>' + escHtml(it.description) + '</span><span class="ac-source">' + srcLabel + ' &middot; ' + fmtNum(it.last_unit_price) + '&euro;</span></div>';
           }).join('');
           dd.classList.add('open');
           dd._items = data.items;
@@ -975,7 +801,6 @@ router.get("/new", (req, res) => {
         .catch(function() { dd.classList.remove('open'); });
     }
 
-    // Autocomplete click handler (delegated)
     document.getElementById('lineItems').addEventListener('mousedown', function(e) {
       var acItem = e.target.closest('.ac-item');
       if (!acItem) return;
@@ -984,20 +809,14 @@ router.get("/new", (req, res) => {
       var iIdx = parseInt(acItem.getAttribute('data-ac-item'));
       var dd = document.getElementById('ac-' + idx);
       if (!dd || !dd._items || !dd._items[iIdx]) return;
-
       var sel = dd._items[iIdx];
       localItems[idx].description = sel.description;
-      localItems[idx].unit_cost = sel.last_unit_cost || 0;
-      localItems[idx].margin_percent = sel.last_margin_percent || 0;
       localItems[idx].unit_price = sel.last_unit_price || 0;
       localItems[idx].subtotal = round2(localItems[idx].quantity * localItems[idx].unit_price);
-
-      dd.classList.remove('open');
-      dd.innerHTML = '';
+      dd.classList.remove('open'); dd.innerHTML = '';
       renderPreview();
     });
 
-    // Close autocomplete on focusout with delay
     document.getElementById('lineItems').addEventListener('focusout', function(e) {
       if (e.target.classList.contains('prev-desc')) {
         setTimeout(function() {
@@ -1010,221 +829,397 @@ router.get("/new", (req, res) => {
 
     // ── Row actions ──
     window._addRow = function() {
-      localItems.push({
-        description: '', quantity: 1, unit_cost: 0, margin_percent: 0,
-        unit_price: 0, subtotal: 0, confidence: null, explanation: null,
-        needs_input: false, ai_suggested: null
-      });
+      localItems.push({ description: '', quantity: 1, unit_price: 0, subtotal: 0, confidence: null, explanation: null, needs_input: false });
       renderPreview();
-      // Focus on last desc input
       var descs = document.querySelectorAll('.prev-desc');
       if (descs.length) descs[descs.length - 1].focus();
     };
-
-    window._delRow = function(idx) {
-      if (localItems.length <= 1) return;
-      localItems.splice(idx, 1);
-      renderPreview();
-    };
-
-    window._dupRow = function(idx) {
-      var copy = JSON.parse(JSON.stringify(localItems[idx]));
-      copy.ai_suggested = null;
-      localItems.splice(idx + 1, 0, copy);
-      renderPreview();
-    };
-
-    window._resetRow = function(idx) {
-      var item = localItems[idx];
-      if (!item.ai_suggested) return;
-      item.unit_cost = item.ai_suggested.unit_cost;
-      item.margin_percent = item.ai_suggested.margin_percent;
-      item.unit_price = round2(item.unit_cost * (1 + item.margin_percent / 100));
-      item.subtotal = round2(item.quantity * item.unit_price);
-      renderPreview();
-    };
+    window._delRow = function(idx) { if (localItems.length <= 1) return; localItems.splice(idx, 1); renderPreview(); };
+    window._dupRow = function(idx) { var copy = JSON.parse(JSON.stringify(localItems[idx])); localItems.splice(idx + 1, 0, copy); renderPreview(); };
 
     window._reEstimate = function(idx, btn) {
       var niBar = btn.closest('.needs-input-bar');
       var input = niBar.querySelector('.ni-input');
       var userInput = input ? input.value.trim() : '';
       if (!userInput) { input.style.borderColor = '#ef4444'; return; }
-
-      btn.disabled = true;
-      btn.textContent = 'Ricalcolo...';
-
+      btn.disabled = true; btn.textContent = 'Ricalcolo...';
       fetch('/quotes/re-estimate-row', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          description: localItems[idx].description,
-          user_input: userInput,
-          pricing_preset: previewData.pricing_preset
-        })
+        body: JSON.stringify({ description: localItems[idx].description, user_input: userInput, pricing_preset: previewData.pricing_preset })
       })
       .then(function(r) { return r.json(); })
       .then(function(data) {
         if (data.success && data.item) {
           var it = data.item;
           localItems[idx].description = it.description || localItems[idx].description;
-          localItems[idx].unit_cost = it.unit_cost;
-          localItems[idx].margin_percent = it.margin_percent;
           localItems[idx].unit_price = it.unit_price;
           localItems[idx].subtotal = round2(localItems[idx].quantity * it.unit_price);
           localItems[idx].confidence = it.confidence;
           localItems[idx].explanation = it.explanation;
           localItems[idx].needs_input = it.needs_input;
-          localItems[idx].ai_suggested = it.ai_suggested;
           renderPreview();
-        } else {
-          btn.disabled = false;
-          btn.textContent = 'Ricalcola';
-          showError(data.error || 'Errore ri-stima');
-        }
+        } else { btn.disabled = false; btn.textContent = 'Ricalcola'; showError(data.error || 'Errore ri-stima'); }
       })
-      .catch(function() {
-        btn.disabled = false;
-        btn.textContent = 'Ricalcola';
-        showError('Errore di rete');
-      });
+      .catch(function() { btn.disabled = false; btn.textContent = 'Ricalcola'; showError('Errore di rete'); });
     };
 
-    // Toolbar buttons
     document.getElementById('addRowBtn').addEventListener('click', function() { window._addRow(); });
 
-    document.getElementById('marginAllBtn').addEventListener('click', function() {
-      var val = prompt('Margine % da applicare a tutte le righe:');
-      if (val === null) return;
-      var m = parseFloat(val);
-      if (isNaN(m) || m < 0 || m > 90) return;
-      localItems.forEach(function(item) {
-        item.margin_percent = m;
-        item.unit_price = round2(item.unit_cost * (1 + m / 100));
-        item.subtotal = round2(item.quantity * item.unit_price);
-      });
-      renderPreview();
-    });
-
+    // ── CSV export ──
     document.getElementById('exportCsvBtn').addEventListener('click', function() {
       var sep = ';';
-      var header = 'Descrizione' + sep + 'Quantità' + sep + 'Costo unitario' + sep + 'Margine %' + sep + 'Prezzo unitario' + sep + 'Subtotale';
+      var header = 'Descrizione' + sep + 'Quantita' + sep + 'Prezzo unitario' + sep + 'Subtotale';
       var rows = localItems.map(function(it) {
-        return [it.description, it.quantity, it.unit_cost, it.margin_percent, it.unit_price, it.subtotal]
-          .map(function(v) { return typeof v === 'string' ? '"' + v.replace(/"/g, '""') + '"' : v; })
-          .join(sep);
+        return [it.description, it.quantity, it.unit_price, it.subtotal].map(function(v) { return typeof v === 'string' ? '"' + v.replace(/"/g, '""') + '"' : v; }).join(sep);
       });
       var csv = '\\uFEFF' + header + '\\n' + rows.join('\\n');
       var blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
       var url = URL.createObjectURL(blob);
-      var a = document.createElement('a');
-      a.href = url;
-      a.download = 'preventivo.csv';
-      a.click();
+      var a = document.createElement('a'); a.href = url; a.download = 'preventivo.csv'; a.click();
       URL.revokeObjectURL(url);
     });
 
-    // ── Paste da Excel ──
+    // ── Paste from Excel ──
     document.getElementById('lineItems').addEventListener('paste', function(e) {
       if (!e.target.classList.contains('prev-desc')) return;
       var text = (e.clipboardData || window.clipboardData).getData('text');
       var lines = text.split(/\\r?\\n/).filter(function(l) { return l.trim(); });
-      if (lines.length < 2) return; // single line = normal paste
-
+      if (lines.length < 2) return;
       e.preventDefault();
       var idx = parseInt(e.target.dataset.idx);
-
       lines.forEach(function(line, li) {
         var cols = line.split('\\t');
-        var row = {
-          description: (cols[0] || '').trim(),
-          quantity: Math.max(1, parseInt(cols[1]) || 1),
-          unit_cost: Math.max(0, parseFloat(cols[2]) || 0),
-          margin_percent: Math.min(90, Math.max(0, parseFloat(cols[3]) || 0)),
-          unit_price: 0, subtotal: 0,
-          confidence: null, explanation: null, needs_input: false, ai_suggested: null
-        };
-        row.unit_price = round2(row.unit_cost * (1 + row.margin_percent / 100));
+        var row = { description: (cols[0] || '').trim(), quantity: Math.max(1, parseInt(cols[1]) || 1), unit_price: Math.max(0, parseFloat(cols[2]) || 0), subtotal: 0, confidence: null, explanation: null, needs_input: false };
         row.subtotal = round2(row.quantity * row.unit_price);
-
-        if (li === 0) {
-          localItems[idx] = row;
-        } else {
-          localItems.splice(idx + li, 0, row);
-        }
+        if (li === 0) localItems[idx] = row; else localItems.splice(idx + li, 0, row);
       });
       renderPreview();
     });
 
+    // ── Confirm: Save and send ──
+    function doSave(sendEmail) {
+      var btn = sendEmail ? document.getElementById('confirmBtn') : document.getElementById('saveDraftBtn');
+      btn.disabled = true;
+      btn.textContent = sendEmail ? 'Salvataggio e invio...' : 'Salvataggio...';
+      document.getElementById('error').style.display = 'none';
+
+      var tp = getSelectedTaxProfile();
+      var cassaPercent = tp.previdenza_percent || 0;
+      var ivaPercent = tp.iva_percent || 0;
+      var sub = calcSubtotal();
+      var cassaAmount = cassaPercent ? round2(sub * cassaPercent / 100) : 0;
+      var taxableForIva = round2(sub + cassaAmount);
+      var tax = round2(taxableForIva * ivaPercent / 100);
+
+      var taxProfile = { id: tp.id, name: tp.name, previdenza_percent: cassaPercent, iva_percent: ivaPercent, note: tp.note || '' };
+
+      var clientItems = localItems.map(function(it) {
+        return { description: it.description, quantity: it.quantity, unit_price: it.unit_price };
+      });
+
+      var clientEmail = document.getElementById('clientEmail').value.trim();
+
+      var body = {
+        job_description: previewData.job_description,
+        pricing_preset: previewData.pricing_preset || 'standard',
+        ai_generated: previewData.ai_generated,
+        profession: '${esc(user.category || "")}',
+        tax_profile: taxProfile,
+        client: {
+          name: document.getElementById('clientName').value.trim(),
+          email: clientEmail || '',
+          phone: (document.getElementById('clientPhone').value || '').trim()
+        },
+        preview: {
+          line_items: clientItems,
+          subtotal: sub,
+          cassa: cassaAmount,
+          taxes: tax,
+          total: round2(sub + cassaAmount + tax),
+          currency: previewData.preview.currency || 'EUR',
+          payment_terms: getPaymentTermsLabel(),
+          validity_days: previewData.preview.validity_days || 14,
+          notes: document.getElementById('notesField').value.trim() || previewData.preview.notes || null
+        }
+      };
+
+      fetch('/quotes/create', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body)
+      })
+      .then(function(r) { return r.json(); })
+      .then(function(result) {
+        if (result.success) {
+          var msg = clientEmail ? 'Preventivo inviato a ' + clientEmail + '!' : 'Preventivo salvato!';
+          document.getElementById('successMsg').textContent = msg;
+          document.getElementById('successOverlay').classList.add('show');
+          setTimeout(function() { window.location.href = '/dashboard'; }, 2000);
+        } else {
+          showError(result.error || 'Errore durante il salvataggio');
+          btn.disabled = false;
+          btn.textContent = sendEmail ? 'Salva e invia' : 'Salva bozza';
+        }
+      })
+      .catch(function() {
+        showError('Errore di rete. Riprova.');
+        btn.disabled = false;
+        btn.textContent = sendEmail ? 'Salva e invia' : 'Salva bozza';
+      });
+    }
+
+    document.getElementById('confirmBtn').addEventListener('click', function() { doSave(true); });
+    document.getElementById('saveDraftBtn').addEventListener('click', function() { doSave(false); });
+
+    // ── Totals ──
     function calcSubtotal() {
       return localItems.reduce(function(s, i) { return s + (i.subtotal || 0); }, 0);
     }
 
     function updateTotalsDisplay() {
-      var tp = getSelectedTaxProfile();
       var sub = round2(calcSubtotal());
-      var cassaAmount = tp.previdenza_percent ? round2(sub * tp.previdenza_percent / 100) : 0;
+      var tp = getSelectedTaxProfile();
+      var cassaPercent = tp.previdenza_percent || 0;
+      var ivaPercent = tp.iva_percent || 0;
+      var cassaAmount = cassaPercent ? round2(sub * cassaPercent / 100) : 0;
       var taxableForIva = round2(sub + cassaAmount);
-      var ivaAmount = round2(taxableForIva * tp.iva_percent / 100);
+      var ivaAmount = round2(taxableForIva * ivaPercent / 100);
       var tot = round2(sub + cassaAmount + ivaAmount);
 
       document.getElementById('subtotal').innerHTML = fmtNum(sub) + ' &euro;';
-
-      // Show/hide cassa row
       var cassaRow = document.getElementById('cassaRow');
       if (cassaAmount > 0) {
         cassaRow.style.display = 'flex';
+        document.getElementById('cassaLabel').textContent = 'Cassa previdenziale ' + cassaPercent + '%';
         document.getElementById('cassaAmount').innerHTML = fmtNum(cassaAmount) + ' &euro;';
-      } else {
-        cassaRow.style.display = 'none';
-      }
-
-      // IVA label
-      var ivaLabel = tp.iva_percent > 0 ? ('IVA ' + tp.iva_percent + '%') : 'IVA (esente)';
-      document.getElementById('ivaLabel').textContent = ivaLabel;
+      } else { cassaRow.style.display = 'none'; }
+      document.getElementById('ivaLabel').textContent = ivaPercent > 0 ? ('IVA ' + ivaPercent + '%') : 'IVA (esente)';
       document.getElementById('taxes').innerHTML = fmtNum(ivaAmount) + ' &euro;';
       document.getElementById('total').innerHTML = fmtNum(tot) + ' &euro;';
     }
 
-    function round2(n) {
-      return Math.round((n + Number.EPSILON) * 100) / 100;
-    }
-
-    function showError(msg) {
-      errEl.textContent = msg;
-      errEl.style.display = 'block';
-      window.scrollTo({ top: 0, behavior: 'smooth' });
-    }
-
-    function escHtml(str) {
-      var d = document.createElement('div');
-      d.textContent = str || '';
-      return d.innerHTML.replace(/"/g, '&quot;');
-    }
-
-    function fmtNum(n) {
-      return Number(n).toLocaleString('it-IT', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-    }
+    function round2(n) { return Math.round((n + Number.EPSILON) * 100) / 100; }
+    function showError(msg) { var el = document.getElementById('error'); el.textContent = msg; el.style.display = 'block'; window.scrollTo({ top: 0, behavior: 'smooth' }); }
+    function showToast(msg) { var t = document.getElementById('toast'); t.textContent = msg; t.classList.add('show'); setTimeout(function(){ t.classList.remove('show'); }, 2000); }
+    function escHtml(str) { var d = document.createElement('div'); d.textContent = str || ''; return d.innerHTML.replace(/"/g, '&quot;'); }
+    function fmtNum(n) { return Number(n).toLocaleString('it-IT', { minimumFractionDigits: 2, maximumFractionDigits: 2 }); }
   })();`;
 
   res.send(page({ title: "Nuovo preventivo", user, content, extraCss, script, activePage: "new" }));
 });
 
-// ── Smart Mock fallback — genera voci coerenti con la descrizione ──
+// ── Categorie non artigiane — guardrail ──
+const NON_ARTIGIANO_CATEGORIES = ['consulenti', 'tecnici', 'sanitario', 'digital'];
 
-function buildMockPreview(job_description, pricing_preset, user, profession, payment_terms) {
-  const multiplier = { economy: 0.7, standard: 1, premium: 1.5 }[pricing_preset] || 1;
-  const defaultMargin = { economy: 20, standard: 30, premium: 40 }[pricing_preset] || 30;
+// ── Voci VIETATE per categorie non artigiane ──
+const BANNED_TERMS_NON_ARTIGIANO = [
+  "manodopera", "materiali", "trasporto", "smaltimento", "movimentazione",
+  "calcinacci", "macerie", "posa in opera", "fornitura e posa",
+  "raccorderia", "guarnizioni", "massetto", "intonaco", "tinteggiatura"
+];
 
-  // Usa margine medio dallo storico utente se disponibile
-  const userProfile = user ? getUserPrompt(user.id) : null;
-  const margin = (userProfile && userProfile.profile && userProfile.profile.margine_medio)
-    ? userProfile.profile.margine_medio
-    : defaultMargin;
-  const desc = job_description.toLowerCase();
+// ── Map profession → category ──
+const PROFESSION_TO_CATEGORY = {
+  // Artigiani
+  idraulico: 'idraulico', elettricista: 'elettricista', muratore: 'edilizia',
+  falegname: 'falegname', imbianchino: 'imbianchino', fabbro: 'edilizia',
+  piastrellista: 'edilizia', giardiniere: 'giardiniere', serramentista: 'falegname',
+  // Consulenti
+  avvocato: 'consulenti', commercialista: 'consulenti',
+  'consulente aziendale': 'consulenti', 'consulente IT': 'consulenti',
+  'consulente del lavoro': 'consulenti', notaio: 'consulenti',
+  // Tecnici
+  geometra: 'tecnici', ingegnere: 'tecnici', architetto: 'tecnici',
+  'perito industriale': 'tecnici', 'tecnico informatico': 'tecnici',
+  // Sanitario
+  medico: 'sanitario', odontoiatra: 'sanitario', psicologo: 'sanitario',
+  fisioterapista: 'sanitario', veterinario: 'sanitario',
+  // Digital
+  grafico: 'digital', fotografo: 'digital', 'web designer': 'digital',
+  videomaker: 'digital', traduttore: 'digital', copywriter: 'digital'
+};
 
-  // Category-based item templates
-  const categoryItems = {
-    idraulico: [
+// ── Template professionali per tipo di incarico (non keyword vaghe) ──
+// Ogni categoria ha template indicizzati per jobType (tipo incarico selezionato dall'utente)
+const PROFESSIONAL_TEMPLATES = {
+  consulenti: {
+    _default: [
+      { description: "Onorario professionale", cost: 500 },
+      { description: "Studio e analisi preliminare", cost: 300 },
+      { description: "Redazione documentazione", cost: 350 },
+      { description: "Spese vive documentate", cost: 80 },
+    ],
+    "contenzioso civile": [
+      { description: "Onorario professionale — fase di studio", cost: 400 },
+      { description: "Studio e analisi della pratica", cost: 300 },
+      { description: "Redazione atti giudiziari", cost: 600 },
+      { description: "Assistenza in udienza", cost: 450 },
+      { description: "Attivita continuativa e corrispondenza", cost: 250 },
+      { description: "Spese vive documentate (bolli, contributo unificato, notifiche)", cost: 120 },
+    ],
+    "consulenza contrattuale": [
+      { description: "Onorario professionale", cost: 400 },
+      { description: "Analisi documentazione esistente", cost: 250 },
+      { description: "Redazione contratto", cost: 500 },
+      { description: "Negoziazione e revisioni", cost: 300 },
+      { description: "Spese vive documentate", cost: 50 },
+    ],
+    "redazione atti": [
+      { description: "Onorario professionale", cost: 350 },
+      { description: "Studio e analisi preliminare", cost: 200 },
+      { description: "Redazione atti e documenti", cost: 500 },
+      { description: "Revisioni e finalizzazione", cost: 150 },
+      { description: "Spese vive documentate (bolli, diritti)", cost: 80 },
+    ],
+    "diritto societario": [
+      { description: "Onorario professionale — consulenza societaria", cost: 500 },
+      { description: "Analisi assetto societario", cost: 300 },
+      { description: "Redazione atti societari", cost: 400 },
+      { description: "Assistenza assemblee e delibere", cost: 350 },
+      { description: "Spese vive documentate (notaio, bolli, CCIAA)", cost: 200 },
+    ],
+    "recupero crediti": [
+      { description: "Onorario professionale", cost: 350 },
+      { description: "Studio della posizione debitoria", cost: 200 },
+      { description: "Redazione diffida/messa in mora", cost: 250 },
+      { description: "Attivita stragiudiziale di recupero", cost: 300 },
+      { description: "Spese vive documentate", cost: 60 },
+    ],
+    "consulenza fiscale": [
+      { description: "Onorario professionale", cost: 400 },
+      { description: "Analisi situazione fiscale", cost: 300 },
+      { description: "Redazione parere/relazione", cost: 350 },
+      { description: "Assistenza continuativa", cost: 250 },
+      { description: "Spese vive documentate", cost: 50 },
+    ],
+    "assistenza stragiudiziale": [
+      { description: "Onorario professionale", cost: 400 },
+      { description: "Studio e analisi della pratica", cost: 250 },
+      { description: "Redazione corrispondenza e diffide", cost: 300 },
+      { description: "Attivita di negoziazione", cost: 350 },
+      { description: "Spese vive documentate", cost: 60 },
+    ],
+    // Legacy/generic names
+    "onorario/parcella": null, // → _default
+    "analisi e studio": null,
+    "consulenza": null,
+    "spese accessorie": null,
+    "bolli e diritti": null,
+  },
+  tecnici: {
+    _default: [
+      { description: "Onorario professionale", cost: 500 },
+      { description: "Sopralluogo e rilievi", cost: 300 },
+      { description: "Elaborazione tecnica", cost: 400 },
+      { description: "Spese vive documentate (diritti, bolli)", cost: 100 },
+    ],
+    "progettazione": [
+      { description: "Onorario professionale — progettazione", cost: 600 },
+      { description: "Rilievo e stato di fatto", cost: 350 },
+      { description: "Progettazione architettonica/tecnica", cost: 900 },
+      { description: "Computo metrico estimativo", cost: 300 },
+      { description: "Direzione lavori", cost: 500 },
+      { description: "Spese vive documentate", cost: 120 },
+    ],
+    "analisi tecnica": [
+      { description: "Onorario professionale", cost: 400 },
+      { description: "Sopralluogo e rilievi", cost: 300 },
+      { description: "Analisi tecnica e relazione", cost: 500 },
+      { description: "Spese vive documentate", cost: 80 },
+    ],
+    "direzione lavori": [
+      { description: "Onorario professionale — direzione lavori", cost: 700 },
+      { description: "Sopralluoghi periodici di cantiere", cost: 400 },
+      { description: "Coordinamento imprese e contabilita lavori", cost: 500 },
+      { description: "Collaudo e chiusura lavori", cost: 300 },
+      { description: "Spese vive documentate", cost: 100 },
+    ],
+    "pratiche/permessi": [
+      { description: "Onorario professionale — pratiche edilizie", cost: 400 },
+      { description: "Pratica edilizia (CILA/SCIA/PDC)", cost: 450 },
+      { description: "Accatastamento e variazioni catastali", cost: 350 },
+      { description: "Spese vive documentate (diritti segreteria, bolli)", cost: 150 },
+    ],
+    "sopralluoghi": [
+      { description: "Onorario professionale", cost: 300 },
+      { description: "Sopralluogo e rilievi in sito", cost: 250 },
+      { description: "Perizia tecnica estimativa", cost: 500 },
+      { description: "Relazione tecnica", cost: 350 },
+      { description: "Spese vive documentate", cost: 80 },
+    ],
+  },
+  sanitario: {
+    _default: [
+      { description: "Prestazione professionale", cost: 120 },
+      { description: "Esami/accertamenti diagnostici", cost: 100 },
+      { description: "Refertazione e relazione clinica", cost: 60 },
+    ],
+    "visita/seduta": [
+      { description: "Prima visita specialistica", cost: 120 },
+      { description: "Esami diagnostici", cost: 150 },
+      { description: "Refertazione e piano terapeutico", cost: 60 },
+    ],
+    "trattamento": [
+      { description: "Piano di trattamento personalizzato", cost: 150 },
+      { description: "Sedute di trattamento", cost: 100 },
+      { description: "Dispositivi e materiali sanitari", cost: 50 },
+      { description: "Controlli periodici", cost: 60 },
+    ],
+    "esami diagnostici": [
+      { description: "Prestazione professionale", cost: 100 },
+      { description: "Esami strumentali/diagnostici", cost: 200 },
+      { description: "Refertazione specialistica", cost: 80 },
+    ],
+    "materiali sanitari": [
+      { description: "Prestazione professionale", cost: 120 },
+      { description: "Dispositivi e materiali protesici/sanitari", cost: 350 },
+      { description: "Sedute applicative", cost: 150 },
+      { description: "Controlli e aggiustamenti", cost: 80 },
+    ],
+  },
+  digital: {
+    _default: [
+      { description: "Onorario professionale — progettazione creativa", cost: 400 },
+      { description: "Produzione e realizzazione", cost: 600 },
+      { description: "Revisioni incluse (max 2 cicli)", cost: 150 },
+      { description: "Consegna file e asset finali", cost: 50 },
+    ],
+    "progettazione creativa": [
+      { description: "Onorario professionale — concept e progettazione", cost: 450 },
+      { description: "Progettazione creativa e bozze", cost: 400 },
+      { description: "Declinazioni e adattamenti", cost: 250 },
+      { description: "Revisioni incluse (max 2 cicli)", cost: 150 },
+      { description: "Consegna file sorgenti e definitivi", cost: 50 },
+    ],
+    "produzione": [
+      { description: "Onorario professionale", cost: 400 },
+      { description: "Pre-produzione e pianificazione", cost: 300 },
+      { description: "Produzione/realizzazione", cost: 600 },
+      { description: "Post-produzione e finalizzazione", cost: 400 },
+      { description: "Consegna file e asset finali", cost: 50 },
+    ],
+    "revisioni": [
+      { description: "Onorario professionale", cost: 300 },
+      { description: "Analisi e revisione materiale esistente", cost: 250 },
+      { description: "Modifiche e ottimizzazione", cost: 350 },
+      { description: "Consegna file aggiornati", cost: 50 },
+    ],
+    "consegna": [
+      { description: "Onorario professionale", cost: 350 },
+      { description: "Preparazione e ottimizzazione file", cost: 200 },
+      { description: "Consegna multi-formato", cost: 100 },
+      { description: "Licenze e diritti d'uso", cost: 150 },
+    ],
+    "licenze": [
+      { description: "Onorario professionale", cost: 300 },
+      { description: "Cessione diritti d'uso", cost: 250 },
+      { description: "Licenze asset terze parti", cost: 150 },
+    ],
+  },
+  // ── ARTIGIANI: mantiene la logica keyword-based originale ──
+  idraulico: {
+    _keywords: [
       { keywords: ["bagno", "sanitari", "wc", "bidet", "lavabo"], items: [
         { description: "Rimozione sanitari esistenti", cost: 120 },
         { description: "Fornitura e posa sanitari", cost: 450 },
@@ -1248,7 +1243,14 @@ function buildMockPreview(job_description, pricing_preset, user, profession, pay
         { description: "Sostituzione guarnizioni e raccordi", cost: 60 },
       ]},
     ],
-    elettricista: [
+    _default: [
+      { description: "Manodopera specializzata", cost: 200 },
+      { description: "Materiali e forniture", cost: 150 },
+      { description: "Trasporto e movimentazione", cost: 80 },
+    ]
+  },
+  elettricista: {
+    _keywords: [
       { keywords: ["quadro", "quadro elettrico", "centralino"], items: [
         { description: "Nuovo quadro elettrico con differenziali", cost: 380 },
         { description: "Cablaggio e collegamento linee", cost: 250 },
@@ -1267,7 +1269,14 @@ function buildMockPreview(job_description, pricing_preset, user, profession, pay
         { description: "Certificazione impianto", cost: 150 },
       ]},
     ],
-    edilizia: [
+    _default: [
+      { description: "Manodopera specializzata", cost: 200 },
+      { description: "Materiali e componenti elettrici", cost: 150 },
+      { description: "Certificazione impianto", cost: 100 },
+    ]
+  },
+  edilizia: {
+    _keywords: [
       { keywords: ["demolizione", "demolire", "rimozione"], items: [
         { description: "Demolizione e rimozione macerie", cost: 350 },
         { description: "Trasporto e smaltimento calcinacci", cost: 200 },
@@ -1285,11 +1294,15 @@ function buildMockPreview(job_description, pricing_preset, user, profession, pay
         { description: "Opere murarie e preparazione", cost: 400 },
         { description: "Materiali e forniture edili", cost: 300 },
       ]},
-      { keywords: ["intonaco", "rasatura"], items: [
-        { description: "Rasatura e intonacatura pareti", cost: 220 },
-      ]},
     ],
-    imbianchino: [
+    _default: [
+      { description: "Manodopera specializzata", cost: 250 },
+      { description: "Materiali e forniture edili", cost: 200 },
+      { description: "Trasporto e smaltimento", cost: 100 },
+    ]
+  },
+  imbianchino: {
+    _keywords: [
       { keywords: ["tinteggiatura", "pittura", "imbiancatura", "verniciatura", "pareti"], items: [
         { description: "Preparazione e stuccatura superfici", cost: 150 },
         { description: "Tinteggiatura pareti (2 mani)", cost: 250 },
@@ -1299,12 +1312,15 @@ function buildMockPreview(job_description, pricing_preset, user, profession, pay
         { description: "Finitura decorativa/velatura", cost: 350 },
         { description: "Materiali pittura decorativa", cost: 120 },
       ]},
-      { keywords: ["crepe", "stuccatura", "rasatura"], items: [
-        { description: "Stuccatura crepe e fessure", cost: 100 },
-        { description: "Rasatura a gesso pareti", cost: 200 },
-      ]},
     ],
-    falegname: [
+    _default: [
+      { description: "Manodopera — tinteggiatura", cost: 200 },
+      { description: "Materiali e pitture", cost: 120 },
+      { description: "Preparazione superfici", cost: 100 },
+    ]
+  },
+  falegname: {
+    _keywords: [
       { keywords: ["armadio", "guardaroba", "cabina armadio"], items: [
         { description: "Struttura armadio su misura", cost: 600 },
         { description: "Ante e ferramenta", cost: 350 },
@@ -1320,7 +1336,14 @@ function buildMockPreview(job_description, pricing_preset, user, profession, pay
         { description: "Installazione con controtelaio", cost: 120 },
       ]},
     ],
-    giardiniere: [
+    _default: [
+      { description: "Manodopera specializzata", cost: 250 },
+      { description: "Legname e materiali", cost: 200 },
+      { description: "Ferramenta e accessori", cost: 80 },
+    ]
+  },
+  giardiniere: {
+    _keywords: [
       { keywords: ["prato", "erba", "tappeto erboso"], items: [
         { description: "Preparazione terreno", cost: 200 },
         { description: "Posa prato a rotoli/semina", cost: 300 },
@@ -1337,83 +1360,149 @@ function buildMockPreview(job_description, pricing_preset, user, profession, pay
         { description: "Potatura alberi e siepi", cost: 200 },
         { description: "Pulizia e smaltimento ramaglie", cost: 80 },
       ]},
+    ],
+    _default: [
+      { description: "Manodopera giardinaggio", cost: 180 },
+      { description: "Piante e materiali", cost: 200 },
+      { description: "Smaltimento verde", cost: 60 },
     ]
-  };
+  }
+};
 
-  // Map profession to category (same as frontend professionToCategory)
-  const professionToCategory = {
-    idraulico: 'idraulico', elettricista: 'elettricista', muratore: 'edilizia',
-    falegname: 'falegname', imbianchino: 'imbianchino', fabbro: 'edilizia',
-    piastrellista: 'edilizia', giardiniere: 'giardiniere', serramentista: 'falegname'
-  };
+// ── validateQuoteItems — Guardrail: scarta voci incoerenti ──
+function validateQuoteItems(category, items) {
+  if (!NON_ARTIGIANO_CATEGORIES.includes(category)) {
+    // Artigiani: nessun filtro aggressivo
+    return { valid: true, items };
+  }
 
-  // Detect category: profession (from select) > user profile > description keywords
-  let detectedCategory = (profession && professionToCategory[profession]) || (user && user.category) || "";
-  if (!detectedCategory || !categoryItems[detectedCategory]) {
-    // Try to detect from description
-    const catKeywords = {
-      idraulico: ["bagno", "idraulic", "tubazion", "sanitari", "rubinett", "caldaia", "doccia", "perdita"],
-      elettricista: ["elettric", "quadro", "prese", "interruttori", "punti luce", "illumin", "cavi", "cablaggio"],
-      edilizia: ["ristrutturazion", "demolizion", "pavimento", "piastrelle", "cartongesso", "murari", "massetto"],
-      imbianchino: ["tinteggiatura", "pittura", "imbianca", "verniciatura", "rasatura", "stuccatura", "velatura"],
-      falegname: ["armadio", "falegnam", "legno", "mobile", "porta", "porte", "cucina su misura"],
-      giardiniere: ["giardino", "prato", "piante", "irrigazione", "potatura", "siepe", "verde"]
-    };
-    for (const [cat, kws] of Object.entries(catKeywords)) {
-      if (kws.some(kw => desc.includes(kw))) {
-        detectedCategory = cat;
-        break;
+  const validItems = [];
+  const rejected = [];
+
+  for (const item of items) {
+    const descLower = (item.description || "").toLowerCase();
+    const isBanned = BANNED_TERMS_NON_ARTIGIANO.some(term => descLower.includes(term));
+    if (isBanned) {
+      rejected.push(item.description);
+    } else {
+      validItems.push(item);
+    }
+  }
+
+  if (rejected.length > 0) {
+    console.warn(`[validateQuoteItems] Categoria "${category}" — scartate ${rejected.length} voci incoerenti:`, rejected);
+  }
+
+  // Se dopo il filtro restano meno di 2 voci, forza rigenerazione dal template _default
+  if (validItems.length < 2) {
+    return { valid: false, items: validItems, rejected };
+  }
+
+  return { valid: true, items: validItems, rejected };
+}
+
+// ── Smart Mock fallback — genera voci basate su categoria + tipo incarico ──
+
+function buildMockPreview(job_description, pricing_preset, user, profession, payment_terms, jobType) {
+  const multiplier = { economico: 0.7, economy: 0.7, standard: 1, premium: 1.5 }[pricing_preset] || 1;
+  const defaultMargin = { economico: 20, economy: 20, standard: 30, premium: 40 }[pricing_preset] || 30;
+
+  const userProfile = user ? getUserPrompt(user.id) : null;
+  const margin = (userProfile && userProfile.profile && userProfile.profile.margine_medio)
+    ? userProfile.profile.margine_medio
+    : defaultMargin;
+  const desc = job_description.toLowerCase();
+
+  // ── Resolve category from profession (mandatory) > user profile ──
+  let detectedCategory = (profession && PROFESSION_TO_CATEGORY[profession])
+    || (user && user.category && PROFESSION_TO_CATEGORY[user.category])
+    || "";
+
+  const template = PROFESSIONAL_TEMPLATES[detectedCategory];
+  let matchedItems = [];
+
+  if (template) {
+    if (NON_ARTIGIANO_CATEGORIES.includes(detectedCategory)) {
+      // ── NON-ARTIGIANO: logica basata su jobType (tipo incarico), NON keyword vaghe ──
+      const normalizedJobType = (jobType || "").toLowerCase().trim();
+
+      // 1) Match esatto per jobType selezionato
+      if (normalizedJobType && template[normalizedJobType]) {
+        matchedItems = template[normalizedJobType].map(it => ({ ...it }));
+      }
+
+      // 2) Match parziale (jobType contiene o è contenuto nella chiave)
+      if (!matchedItems.length && normalizedJobType) {
+        for (const [key, items] of Object.entries(template)) {
+          if (key.startsWith('_') || !items) continue;
+          if (normalizedJobType.includes(key) || key.includes(normalizedJobType)) {
+            matchedItems = items.map(it => ({ ...it }));
+            break;
+          }
+        }
+      }
+
+      // 3) Fallback al _default della categoria — MAI a keyword vaghe
+      if (!matchedItems.length) {
+        matchedItems = (template._default || []).map(it => ({ ...it }));
+      }
+
+    } else {
+      // ── ARTIGIANO: logica keyword-based (mantiene comportamento originale) ──
+      const kwGroups = template._keywords || [];
+      for (const group of kwGroups) {
+        if (group.keywords.some(kw => desc.includes(kw))) {
+          matchedItems.push(...group.items);
+        }
+      }
+      // Se nessun match keyword, usa _default artigiano
+      if (!matchedItems.length) {
+        matchedItems = (template._default || []).map(it => ({ ...it }));
+      }
+      // Per artigiani: aggiungi manodopera se non presente
+      const hasManodopera = matchedItems.some(it => it.description.toLowerCase().includes("manodopera"));
+      if (!hasManodopera && matchedItems.length <= 5) {
+        matchedItems.unshift({ description: "Manodopera specializzata", cost: 200 });
       }
     }
-  }
-
-  // Collect matching items
-  let matchedItems = [];
-  const templates = categoryItems[detectedCategory] || [];
-
-  for (const group of templates) {
-    if (group.keywords.some(kw => desc.includes(kw))) {
-      matchedItems.push(...group.items);
-    }
-  }
-
-  // If no keyword matches, use first 2 groups from category
-  if (!matchedItems.length && templates.length) {
-    for (let i = 0; i < Math.min(2, templates.length); i++) {
-      matchedItems.push(...templates[i].items);
-    }
-  }
-
-  // Fallback: generic items based on description words
-  if (!matchedItems.length) {
+  } else {
+    // ── Categoria sconosciuta — fallback generico artigiano ──
     const words = job_description.split(/\s+/).filter(w => w.length > 4).slice(0, 3);
     matchedItems = [
       { description: "Manodopera — " + (words[0] || "intervento"), cost: 250 },
       { description: "Materiali e forniture", cost: 150 },
       { description: "Trasporto e movimentazione", cost: 80 },
-      { description: "Smaltimento e pulizia finale", cost: 60 },
     ];
   }
 
   // Limit to 6 items max and apply multiplier
   matchedItems = matchedItems.slice(0, 6);
 
-  const items = matchedItems.map(it => ({
+  let items = matchedItems.map(it => ({
     description: it.description,
     quantity: 1,
     unit_cost: Math.round(it.cost * multiplier),
     margin_percent: margin
   }));
 
-  // Add manodopera if not present and we have specific materials
-  const hasManodopera = items.some(it => it.description.toLowerCase().includes("manodopera"));
-  if (!hasManodopera && items.length <= 5) {
-    items.unshift({
-      description: "Manodopera specializzata",
+  // ── Guardrail: valida le voci per coerenza con la categoria ──
+  const validation = validateQuoteItems(detectedCategory, items);
+  if (!validation.valid) {
+    // Rigenerazione forzata dal _default della categoria
+    console.warn(`[buildMockPreview] Rigenerazione forzata per categoria "${detectedCategory}" — voci incoerenti rilevate`);
+    const fallback = (template && template._default) || [
+      { description: "Onorario professionale", cost: 400 },
+      { description: "Studio e analisi preliminare", cost: 250 },
+      { description: "Spese vive documentate", cost: 80 },
+    ];
+    items = fallback.map(it => ({
+      description: it.description,
       quantity: 1,
-      unit_cost: Math.round(200 * multiplier),
+      unit_cost: Math.round(it.cost * multiplier),
       margin_percent: margin
-    });
+    }));
+  } else {
+    items = validation.items;
   }
 
   const result = pricingEngine.processQuote(items);
@@ -1468,6 +1557,11 @@ router.post("/preview", requirePlan, async (req, res) => {
   const pricing_preset = req.body.pricing_preset || "standard";
   const profession = (req.body.profession || "").trim();
   const payment_terms = (req.body.payment_terms || "").trim();
+  const jobType = (req.body.jobType || "").trim();
+  const priceLevel = (req.body.priceLevel || "standard").trim();
+  const urgency = (req.body.urgency || "normale").trim();
+  const margin = user.defaultMargin || 30;
+  const notes = (req.body.notes || "").trim();
 
   if (!job_description) {
     return res.status(400).json({ success: false, error: "La descrizione del lavoro è obbligatoria" });
@@ -1475,10 +1569,13 @@ router.post("/preview", requirePlan, async (req, res) => {
 
   let preview;
   let ai_generated = false;
+  // Store internal AI data for later use in /create
+  let _internalItems = [];
 
   // If the user has a custom priceList, use it directly (no AI call)
   if (Array.isArray(user.priceList) && user.priceList.length > 0) {
     preview = buildPriceListPreview(user.priceList, pricing_preset);
+    _internalItems = preview.line_items.map(it => ({ ...it }));
   } else {
     try {
       if (claude.isAvailable()) {
@@ -1488,41 +1585,81 @@ router.post("/preview", requirePlan, async (req, res) => {
           job_description,
           pricing_preset,
           profession,
+          jobType,
+          priceLevel,
+          urgency,
+          notes,
           language: "it"
         });
 
         // Processa suggerimenti AI attraverso il pricing engine
-        const processedItems = pricingEngine.processAiSuggestions(aiResult.suggestions || []);
-        const quoted = pricingEngine.processQuote(processedItems);
+        let processedItems = pricingEngine.processAiSuggestions(aiResult.suggestions || []);
 
-        preview = {
-          line_items: quoted.line_items.map((item, i) => ({
+        // ── Guardrail AI: valida voci per categoria ──
+        const aiCategory = (profession && PROFESSION_TO_CATEGORY[profession])
+          || (user && user.category && PROFESSION_TO_CATEGORY[user.category]) || "";
+        const aiValidation = validateQuoteItems(aiCategory, processedItems);
+
+        if (!aiValidation.valid) {
+          // AI ha generato voci incoerenti — fallback al mock deterministico
+          console.warn(`[preview AI] Guardrail attivato per "${aiCategory}" — ${(aiValidation.rejected || []).length} voci incoerenti, fallback a mock`);
+          preview = buildMockPreview(job_description, pricing_preset, user, profession, payment_terms, jobType);
+          _internalItems = preview.line_items.map(it => ({ ...it }));
+          ai_generated = false;
+        } else {
+          processedItems = aiValidation.items;
+          const quoted = pricingEngine.processQuote(processedItems);
+
+          // Salva dati interni (cost/margin) per uso backend
+          _internalItems = quoted.line_items.map((item, i) => ({
             ...item,
             confidence: processedItems[i].confidence,
             explanation: processedItems[i].explanation,
             needs_input: processedItems[i].needs_input,
             ai_suggested: processedItems[i].ai_suggested
-          })),
-          subtotal: quoted.subtotal,
-          taxes: quoted.taxes,
-          total: quoted.total,
-          currency: "EUR",
-          payment_terms: payment_terms || aiResult.payment_terms || "50% acconto, saldo a fine lavori",
-          validity_days: aiResult.validity_days || 14,
-          notes: aiResult.notes || null
-        };
-        ai_generated = true;
+          }));
+
+          // Frontend riceve SOLO description, quantity, unit_price, subtotal + metadata AI
+          preview = {
+            line_items: quoted.line_items.map((item, i) => ({
+              description: item.description,
+              quantity: item.quantity,
+              unit_price: item.unit_price,
+              subtotal: item.subtotal,
+              confidence: processedItems[i].confidence,
+              explanation: processedItems[i].explanation,
+              needs_input: processedItems[i].needs_input,
+              unit_cost: item.unit_cost,
+              margin_percent: item.margin_percent,
+              ai_suggested: processedItems[i].ai_suggested
+            })),
+            subtotal: quoted.subtotal,
+            taxes: quoted.taxes,
+            total: quoted.total,
+            currency: "EUR",
+            payment_terms: payment_terms || aiResult.payment_terms || "50% acconto, saldo a fine lavori",
+            validity_days: aiResult.validity_days || 14,
+            notes: aiResult.notes || null
+          };
+          ai_generated = true;
+        }
       } else {
-        preview = buildMockPreview(job_description, pricing_preset, user, profession, payment_terms);
+        preview = buildMockPreview(job_description, pricing_preset, user, profession, payment_terms, jobType);
+        _internalItems = preview.line_items.map(it => ({ ...it }));
       }
     } catch (err) {
       console.error("Claude preview error, fallback mock:", err.message);
-      preview = buildMockPreview(job_description, pricing_preset, user, profession, payment_terms);
+      preview = buildMockPreview(job_description, pricing_preset, user, profession, payment_terms, jobType);
+      _internalItems = preview.line_items.map(it => ({ ...it }));
     }
   }
 
   const userProfile = getUserPrompt(user.id);
   const has_user_profile = !!(userProfile && userProfile.context_prompt);
+
+  // Salva dati interni nella sessione per il /create
+  req.session._lastPreviewItems = _internalItems;
+  req.session._lastPreviewMargin = margin;
 
   res.json({
     success: true,
@@ -1536,7 +1673,7 @@ router.post("/preview", requirePlan, async (req, res) => {
 
 // ── POST /quotes/create ──
 
-router.post("/create", requirePlan, (req, res) => {
+router.post("/create", requirePlan, async (req, res) => {
   const user = getUserById(req.session.userId);
   if (!user) return res.status(401).json({ success: false, error: "Sessione non valida" });
 
@@ -1552,14 +1689,54 @@ router.post("/create", requirePlan, (req, res) => {
     return res.status(400).json({ success: false, error: "Inserisci nome e email del cliente" });
   }
 
-  // Valida e ricalcola con il pricing engine
-  const validated = pricingEngine.processQuote(preview.line_items);
+  // Ricostruisci cost/margin dal backend (il frontend manda solo unit_price)
+  const lastPreviewItems = req.session._lastPreviewItems || [];
+  const savedMargin = req.session._lastPreviewMargin || user.defaultMargin || 30;
 
-  // Use client-provided totals that include tax profile calculations
-  const finalSubtotal = validated.subtotal;
-  const finalCassa = preview.cassa || 0;
-  const finalTaxes = preview.taxes || 0;
-  const finalTotal = preview.total || validated.total;
+  const enrichedItems = preview.line_items.map(clientItem => {
+    // Cerca la voce originale AI per descrizione
+    const original = lastPreviewItems.find(ai =>
+      ai.description === clientItem.description
+    );
+
+    if (original) {
+      // L'utente potrebbe aver cambiato il prezzo: ricalcola margin dal prezzo originale AI
+      const finalPrice = Number(clientItem.unit_price) || 0;
+      const originalCost = original.unit_cost || 0;
+      let margin = originalCost > 0
+        ? pricingEngine.round2(((finalPrice - originalCost) / originalCost) * 100)
+        : savedMargin;
+      margin = Math.min(90, Math.max(0, margin));
+
+      return {
+        description: clientItem.description,
+        quantity: clientItem.quantity || 1,
+        unit_cost: originalCost,
+        margin_percent: margin,
+        unit_price: finalPrice,
+        subtotal: pricingEngine.round2((clientItem.quantity || 1) * finalPrice)
+      };
+    } else {
+      // Voce aggiunta manualmente — stima cost da margin predefinito
+      const finalPrice = Number(clientItem.unit_price) || 0;
+      const estimatedCost = pricingEngine.round2(finalPrice / (1 + savedMargin / 100));
+      return {
+        description: clientItem.description,
+        quantity: clientItem.quantity || 1,
+        unit_cost: estimatedCost,
+        margin_percent: savedMargin,
+        unit_price: finalPrice,
+        subtotal: pricingEngine.round2((clientItem.quantity || 1) * finalPrice)
+      };
+    }
+  });
+
+  // Valida e ricalcola con il pricing engine
+  const validated = pricingEngine.processQuote(enrichedItems);
+
+  // Calcolo fiscale con profilo
+  const tp = tax_profile || {};
+  const fiscal = pricingEngine.computeFiscalTotals(validated.subtotal, tp);
 
   const slug = crypto.randomBytes(6).toString("hex");
   const quoteId = `q-${Date.now()}`;
@@ -1582,37 +1759,50 @@ router.post("/create", requirePlan, (req, res) => {
     tax_profile: tax_profile || null,
     ai_generated: !!req.body.ai_generated,
     line_items: validated.line_items,
-    subtotal: finalSubtotal,
-    cassa: finalCassa,
-    taxes: finalTaxes,
-    total: finalTotal,
+    subtotal: fiscal.imponibile,
+    cassa: fiscal.cassa,
+    taxes: fiscal.iva,
+    total: fiscal.totale,
+    margin_avg: pricingEngine.round2(validated.line_items.reduce((s, i) => s + i.margin_percent, 0) / (validated.line_items.length || 1)),
     currency: preview.currency || "EUR",
     payment_terms: preview.payment_terms || "50% acconto, saldo a fine lavori",
     validity_days: preview.validity_days || 14,
     notes: preview.notes || null,
-    status: "sent"
+    status: "draft"
   };
 
   saveQuote(quote);
 
+  // Pulisci dati di sessione
+  delete req.session._lastPreviewItems;
+  delete req.session._lastPreviewMargin;
+
   // Invio email automatico al cliente
   try {
-    const baseUrl = `${req.protocol}://${req.get("host")}`;
+    const baseUrl = req.baseUrl_resolved || `${req.protocol}://${req.get("host")}`;
     const acceptUrl = `${baseUrl}/q/${quoteId}/accept`;
     const viewUrl = `${baseUrl}/q/${quoteId}`;
     const emailHtml = buildQuoteEmailHTML(quote, acceptUrl, viewUrl);
-    sendOrLog(client.email, `Preventivo ${quoteId} da ${user.name}`, emailHtml, quoteId);
+    const emailResult = await sendOrLog(client.email, `Preventivo ${quoteId} da ${user.name}`, emailHtml, quoteId);
+
+    if (emailResult.sent) {
+      updateQuote(quoteId, { status: "sent", email_status: "sent", email_sent_at: new Date().toISOString() });
+    } else if (emailResult.logged) {
+      updateQuote(quoteId, { status: "sent", email_status: "logged", email_sent_at: new Date().toISOString() });
+    } else if (emailResult.failed) {
+      updateQuote(quoteId, { status: "draft", email_status: "failed", email_error: emailResult.error });
+    }
   } catch (err) {
     console.error("[NewQuote] Errore invio email:", err.message);
+    updateQuote(quoteId, { status: "draft", email_status: "failed", email_error: err.message });
   }
 
   // Se AI-generated, registra feedback per le voci modificate dall'utente
-  if (req.body.ai_generated && Array.isArray(preview.line_items)) {
-    preview.line_items.forEach((item, i) => {
-      if (item.ai_suggested) {
-        const userFinal = validated.line_items[i];
-        const aiSug = item.ai_suggested;
-        // Registra se l'utente ha modificato costo o margine
+  if (req.body.ai_generated && lastPreviewItems.length > 0) {
+    validated.line_items.forEach((userFinal, i) => {
+      const aiOriginal = lastPreviewItems.find(ai => ai.description === userFinal.description);
+      if (aiOriginal && aiOriginal.ai_suggested) {
+        const aiSug = aiOriginal.ai_suggested;
         if (userFinal.unit_cost !== aiSug.unit_cost || userFinal.margin_percent !== aiSug.margin_percent) {
           feedback.recordFeedback({
             user_id: user.id,
@@ -1630,12 +1820,12 @@ router.post("/create", requirePlan, (req, res) => {
     });
   }
 
-  const baseUrl = `${req.protocol}://${req.get("host")}`;
+  const baseUrlFinal = req.baseUrl_resolved || `${req.protocol}://${req.get("host")}`;
 
   res.status(201).json({
     success: true,
     quote_id: quoteId,
-    public_link: `${baseUrl}/q/${quoteId}`
+    public_link: `${baseUrlFinal}/q/${quoteId}`
   });
 });
 
@@ -1691,20 +1881,20 @@ router.get("/:id", (req, res) => {
     .meta-block{background:#f8f9fb;border-radius:8px;padding:14px 18px}
     .meta-label{font-size:.7rem;text-transform:uppercase;letter-spacing:.06em;color:#888;margin-bottom:4px}
     .meta-value{font-size:.95rem;font-weight:500}
-    .desc-block{background:#f8f9fb;border-left:3px solid #2563eb;padding:14px 18px;border-radius:0 8px 8px 0;margin-bottom:24px;font-size:.93rem;line-height:1.6}
+    .desc-block{background:#f8f9fb;border-left:3px solid #0d9488;padding:14px 18px;border-radius:0 8px 8px 0;margin-bottom:24px;font-size:.93rem;line-height:1.6}
     .edit-input{border:1px solid transparent;background:transparent;padding:4px 8px;border-radius:4px;font-size:.88rem;font-family:inherit;transition:border-color .15s}
     .edit-input:hover{border-color:#ddd}
-    .edit-input:focus{border-color:#2563eb;outline:none;background:#fff}
+    .edit-input:focus{border-color:#0d9488;outline:none;background:#fff}
     .edit-desc{width:100%}
     .totals-block{text-align:right;margin:20px 0 24px}
     .totals-block .row{display:flex;justify-content:flex-end;gap:24px;padding:4px 0;font-size:.95rem}
-    .totals-block .total-row{font-size:1.4rem;font-weight:700;color:#1a1a2e;border-top:2px solid #1a1a2e;padding-top:10px;margin-top:8px}
+    .totals-block .total-row{font-size:1.4rem;font-weight:700;color:#1c1917;border-top:2px solid #1c1917;padding-top:10px;margin-top:8px}
     .action-bar{display:flex;gap:10px;flex-wrap:wrap;padding-top:20px;border-top:1px solid #eee;margin-top:8px}
     .status-badge{display:inline-block;padding:5px 14px;border-radius:20px;font-size:.78rem;font-weight:600}
-    .notes-block{background:#f8f9fb;border-left:3px solid #2563eb;padding:14px 18px;border-radius:0 8px 8px 0;font-size:.9rem;line-height:1.6;margin-bottom:24px}
+    .notes-block{background:#f8f9fb;border-left:3px solid #0d9488;padding:14px 18px;border-radius:0 8px 8px 0;font-size:.9rem;line-height:1.6;margin-bottom:24px}
     .save-bar{display:none;background:#fff8e1;border-radius:8px;padding:12px 18px;margin-bottom:18px;font-size:.88rem;color:#856404;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px}
     .save-bar.visible{display:flex}
-    .toast{position:fixed;bottom:24px;left:50%;transform:translateX(-50%);background:#1a1a2e;color:#fff;padding:10px 24px;border-radius:8px;font-size:.85rem;opacity:0;transition:opacity .3s;pointer-events:none;z-index:100}
+    .toast{position:fixed;bottom:24px;left:50%;transform:translateX(-50%);background:#1c1917;color:#fff;padding:10px 24px;border-radius:8px;font-size:.85rem;opacity:0;transition:opacity .3s;pointer-events:none;z-index:100}
     .toast.show{opacity:1}
     .confirm-overlay{display:none;position:fixed;inset:0;background:rgba(0,0,0,.4);z-index:200;align-items:center;justify-content:center}
     .confirm-overlay.show{display:flex}
@@ -1713,10 +1903,10 @@ router.get("/:id", (req, res) => {
     .confirm-box p{color:#888;font-size:.9rem;margin-bottom:24px}
     .confirm-box .btns{display:flex;gap:10px;justify-content:center}
     .row-action{background:none;border:none;cursor:pointer;font-size:1rem;padding:2px 6px;border-radius:4px;color:#888}
-    .row-action:hover{color:#2563eb;background:#f0f2f5}
+    .row-action:hover{color:#0d9488;background:#faf9f7}
     .detail-table-actions{margin-bottom:12px}
     .detail-table-actions button{padding:6px 14px;border-radius:6px;font-size:.8rem;font-weight:500;cursor:pointer;border:1px solid #d1d5db;background:#fff;color:#333;transition:all .15s}
-    .detail-table-actions button:hover{background:#f0f4ff;border-color:#2563eb;color:#2563eb}
+    .detail-table-actions button:hover{background:#f0fdfa;border-color:#0d9488;color:#0d9488}
   `;
 
   const content = `

@@ -1,129 +1,425 @@
 // src/utils/emailTemplates.js
 
-function esc(s) { return String(s || "").replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;"); }
-function fmt(n) { return Number(n || 0).toLocaleString("it-IT", { minimumFractionDigits: 2, maximumFractionDigits: 2 }); }
+function esc(s) {
+  return String(s || "")
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;");
+}
+
+function fmt(n) {
+  return Number(n || 0).toLocaleString("it-IT", {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  });
+}
 
 function buildQuoteEmailHTML(quote, acceptUrl, viewUrl) {
-  const rows = quote.line_items.map(i => `
-    <tr>
-      <td style="padding:12px 16px;font-weight:500;color:#1e1e2d;border-bottom:1px solid #f3f4f6">${esc(i.description)}</td>
-      <td style="padding:12px 10px;color:#6b7280;text-align:center;border-bottom:1px solid #f3f4f6">${i.quantity}</td>
-      <td style="padding:12px 16px;font-weight:500;text-align:right;border-bottom:1px solid #f3f4f6">${fmt(i.unit_price)} &euro;</td>
-      <td style="padding:12px 16px;font-weight:600;color:#1e1e2d;text-align:right;border-bottom:1px solid #f3f4f6">${fmt(i.subtotal)} &euro;</td>
-    </tr>
-  `).join("");
-
   const createdDate = new Date(quote.created_at).toLocaleDateString("it-IT", {
-    day: "2-digit", month: "long", year: "numeric"
+    day: "2-digit",
+    month: "long",
+    year: "numeric",
   });
 
+  const jobDesc = quote.job_description && quote.job_description.length > 100
+    ? quote.job_description.substring(0, 97) + "..."
+    : quote.job_description;
+
+  const cassaRow = quote.cassa
+    ? `<tr>
+        <td style="padding:8px 20px;font-size:14px;color:#57534e;font-family:Arial,Helvetica,sans-serif;">Contributo cassa</td>
+        <td style="padding:8px 20px;font-size:14px;color:#1c1917;text-align:right;font-family:Arial,Helvetica,sans-serif;">${fmt(quote.cassa)} &euro;</td>
+      </tr>`
+    : "";
+
   return `<!DOCTYPE html>
-<html lang="it">
-<head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0"></head>
-<body style="margin:0;padding:0;background:#f0f2f5;font-family:'Inter',-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;font-size:14px;color:#1e1e2d">
-  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#f0f2f5;padding:24px 0">
-    <tr><td align="center">
-      <table role="presentation" width="640" cellpadding="0" cellspacing="0" style="background:#fff;border-radius:16px;overflow:hidden;box-shadow:0 4px 24px rgba(0,0,0,.08)">
+<html lang="it" xmlns="http://www.w3.org/1999/xhtml">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1.0">
+  <meta http-equiv="X-UA-Compatible" content="IE=edge">
+  <title>Nuovo Preventivo</title>
+</head>
+<body style="margin:0;padding:0;background-color:#f5f5f4;font-family:Arial,Helvetica,sans-serif;font-size:14px;color:#1c1917;-webkit-text-size-adjust:100%;-ms-text-size-adjust:100%;">
+  <!-- Outer wrapper -->
+  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="background-color:#f5f5f4;">
+    <tr>
+      <td align="center" style="padding:32px 16px;">
 
-        <!-- Header -->
-        <tr><td style="background:linear-gradient(135deg,#1a1a2e 0%,#16213e 100%);color:#fff;padding:32px 36px">
-          <h1 style="margin:0 0 4px;font-size:1.3rem;font-weight:700;letter-spacing:-.02em">Nuovo Preventivo</h1>
-          <span style="font-size:.82rem;opacity:.5">${esc(quote.quote_id)} &middot; ${createdDate}</span>
-        </td></tr>
+        <!-- Main container 600px -->
+        <table role="presentation" width="600" cellpadding="0" cellspacing="0" border="0" style="max-width:600px;width:100%;background-color:#ffffff;border-radius:8px;overflow:hidden;">
 
-        <!-- Body -->
-        <tr><td style="padding:36px">
-          <p style="margin:0 0 20px;font-size:.95rem;line-height:1.6;color:#374151">
-            Gentile <strong>${esc(quote.client.name)}</strong>,<br>
-            Le inviamo il preventivo richiesto da <strong>${esc(quote.professional.name)}</strong>.
-          </p>
+          <!-- ===== HEADER ===== -->
+          <tr>
+            <td style="background-color:#1c1917;padding:36px 40px 32px 40px;">
+              <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
+                <tr>
+                  <td style="font-family:Arial,Helvetica,sans-serif;font-size:22px;font-weight:bold;color:#ffffff;line-height:1.3;">
+                    ${esc(quote.professional.name)}
+                  </td>
+                </tr>
+                <tr>
+                  <td style="font-family:Arial,Helvetica,sans-serif;font-size:13px;color:#a8a29e;padding-top:6px;letter-spacing:0.03em;">
+                    ${esc(quote.professional.category)} &middot; ${esc(quote.professional.city)}
+                  </td>
+                </tr>
+                <tr>
+                  <td style="padding-top:16px;">
+                    <table role="presentation" cellpadding="0" cellspacing="0" border="0">
+                      <tr>
+                        <td style="background-color:#0d9488;border-radius:4px;padding:6px 14px;">
+                          <span style="font-family:Arial,Helvetica,sans-serif;font-size:13px;font-weight:bold;color:#ffffff;letter-spacing:0.04em;text-transform:uppercase;">Nuovo Preventivo</span>
+                        </td>
+                      </tr>
+                    </table>
+                  </td>
+                </tr>
+                <tr>
+                  <td style="font-family:Arial,Helvetica,sans-serif;font-size:12px;color:#78716c;padding-top:12px;">
+                    ${esc(quote.quote_id)} &middot; ${createdDate}
+                  </td>
+                </tr>
+              </table>
+            </td>
+          </tr>
 
-          <!-- Job description -->
-          <div style="background:linear-gradient(135deg,#f0f4ff,#f8f9ff);border-left:3px solid #2563eb;padding:14px 18px;border-radius:0 10px 10px 0;margin-bottom:24px;font-size:.93rem;line-height:1.7;color:#374151">
-            ${esc(quote.job_description)}
-          </div>
+          <!-- ===== GREETING ===== -->
+          <tr>
+            <td style="padding:32px 40px 8px 40px;">
+              <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
+                <tr>
+                  <td style="font-family:Arial,Helvetica,sans-serif;font-size:15px;line-height:1.7;color:#374151;">
+                    Gentile <strong>${esc(quote.client.name)}</strong>,<br><br>
+                    <strong>${esc(quote.professional.name)}</strong> le ha inviato un preventivo.
+                    Trova di seguito il riepilogo; pu&ograve; consultare il dettaglio completo e accettare il preventivo tramite i pulsanti in basso.
+                  </td>
+                </tr>
+              </table>
+            </td>
+          </tr>
 
-          <!-- Items table -->
-          <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="font-size:.88rem;margin-bottom:4px">
-            <tr style="background:#f9fafb">
-              <th style="text-align:left;padding:12px 16px;font-weight:600;font-size:.72rem;text-transform:uppercase;letter-spacing:.05em;color:#6b7280;border-bottom:2px solid #e5e7eb">Descrizione</th>
-              <th style="text-align:center;padding:12px 10px;font-weight:600;font-size:.72rem;text-transform:uppercase;letter-spacing:.05em;color:#6b7280;border-bottom:2px solid #e5e7eb;width:60px">Qt&agrave;</th>
-              <th style="text-align:right;padding:12px 16px;font-weight:600;font-size:.72rem;text-transform:uppercase;letter-spacing:.05em;color:#6b7280;border-bottom:2px solid #e5e7eb;width:110px">Prezzo unit.</th>
-              <th style="text-align:right;padding:12px 16px;font-weight:600;font-size:.72rem;text-transform:uppercase;letter-spacing:.05em;color:#6b7280;border-bottom:2px solid #e5e7eb;width:110px">Subtotale</th>
-            </tr>
-            ${rows}
-          </table>
+          <!-- ===== SUMMARY CARD ===== -->
+          <tr>
+            <td style="padding:24px 40px 8px 40px;">
+              <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="background-color:#fafaf9;border:1px solid #e7e5e4;border-radius:8px;overflow:hidden;">
 
-          <!-- Totals -->
-          <div style="background:linear-gradient(135deg,#1a1a2e,#16213e);border-radius:12px;padding:20px 24px;color:#fff;margin:20px 0 28px">
-            <div style="display:flex;justify-content:space-between;padding:6px 0;font-size:.92rem;color:rgba(255,255,255,.7)"><span>Imponibile</span><span>${fmt(quote.subtotal)} &euro;</span></div>
-            ${quote.cassa ? `<div style="display:flex;justify-content:space-between;padding:6px 0;font-size:.92rem;color:rgba(255,255,255,.7)"><span>Contributo cassa</span><span>${fmt(quote.cassa)} &euro;</span></div>` : ""}
-            <div style="display:flex;justify-content:space-between;padding:6px 0;font-size:.92rem;color:rgba(255,255,255,.7)"><span>IVA</span><span>${fmt(quote.taxes)} &euro;</span></div>
-            <div style="display:flex;justify-content:space-between;padding-top:12px;margin-top:8px;border-top:1px solid rgba(255,255,255,.15);font-size:1.3rem;font-weight:700;color:#fff"><span>Totale</span><span>${fmt(quote.total)} ${esc(quote.currency)}</span></div>
-          </div>
+                <!-- Card title -->
+                <tr>
+                  <td colspan="2" style="padding:16px 20px 12px 20px;border-bottom:1px solid #e7e5e4;">
+                    <span style="font-family:Arial,Helvetica,sans-serif;font-size:11px;font-weight:bold;text-transform:uppercase;letter-spacing:0.08em;color:#a8a29e;">Riepilogo preventivo</span>
+                  </td>
+                </tr>
 
-          <!-- CTA Buttons -->
-          <div style="text-align:center;margin:32px 0 16px">
-            <a href="${acceptUrl}" style="display:inline-block;padding:14px 36px;background:linear-gradient(135deg,#059669,#047857);color:#fff;font-size:.95rem;font-weight:700;border-radius:10px;text-decoration:none;box-shadow:0 2px 8px rgba(5,150,105,.3)">Accetta preventivo</a>
-          </div>
-          <div style="text-align:center;margin-bottom:8px">
-            <a href="${viewUrl}" style="display:inline-block;padding:12px 28px;background:linear-gradient(135deg,#2563eb,#1d4ed8);color:#fff;font-size:.88rem;font-weight:600;border-radius:10px;text-decoration:none;box-shadow:0 2px 8px rgba(37,99,235,.25)">Visualizza online</a>
-          </div>
+                <!-- Oggetto -->
+                <tr>
+                  <td style="padding:12px 20px 4px 20px;font-size:13px;color:#78716c;font-family:Arial,Helvetica,sans-serif;">Oggetto</td>
+                  <td style="padding:12px 20px 4px 20px;font-size:14px;color:#1c1917;text-align:right;font-family:Arial,Helvetica,sans-serif;font-weight:bold;">${esc(jobDesc)}</td>
+                </tr>
 
-          <!-- Footer -->
-          <div style="font-size:.82rem;color:#9ca3af;border-top:1px solid #e5e7eb;padding-top:20px;margin-top:24px">
-            <p style="margin:0"><strong style="color:#6b7280">Pagamento:</strong> ${esc(quote.payment_terms)}</p>
-            <p style="margin:4px 0 0"><strong style="color:#6b7280">Validit&agrave;:</strong> ${quote.validity_days} giorni</p>
-          </div>
-        </td></tr>
+                <!-- Numero voci -->
+                <tr>
+                  <td style="padding:4px 20px;font-size:13px;color:#78716c;font-family:Arial,Helvetica,sans-serif;">Voci</td>
+                  <td style="padding:4px 20px;font-size:14px;color:#1c1917;text-align:right;font-family:Arial,Helvetica,sans-serif;">${quote.line_items.length} voci</td>
+                </tr>
 
-      </table>
-    </td></tr>
+                <!-- Separator -->
+                <tr>
+                  <td colspan="2" style="padding:8px 20px;">
+                    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
+                      <tr><td style="border-top:1px solid #e7e5e4;font-size:1px;line-height:1px;">&nbsp;</td></tr>
+                    </table>
+                  </td>
+                </tr>
+
+                <!-- Imponibile -->
+                <tr>
+                  <td style="padding:8px 20px;font-size:14px;color:#57534e;font-family:Arial,Helvetica,sans-serif;">Imponibile</td>
+                  <td style="padding:8px 20px;font-size:14px;color:#1c1917;text-align:right;font-family:Arial,Helvetica,sans-serif;">${fmt(quote.subtotal)} &euro;</td>
+                </tr>
+
+                <!-- Cassa (conditional) -->
+                ${cassaRow}
+
+                <!-- IVA -->
+                <tr>
+                  <td style="padding:8px 20px;font-size:14px;color:#57534e;font-family:Arial,Helvetica,sans-serif;">IVA</td>
+                  <td style="padding:8px 20px;font-size:14px;color:#1c1917;text-align:right;font-family:Arial,Helvetica,sans-serif;">${fmt(quote.taxes)} &euro;</td>
+                </tr>
+
+                <!-- Totale -->
+                <tr>
+                  <td colspan="2" style="padding:4px 20px 0 20px;">
+                    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
+                      <tr><td style="border-top:2px solid #1c1917;font-size:1px;line-height:1px;">&nbsp;</td></tr>
+                    </table>
+                  </td>
+                </tr>
+                <tr>
+                  <td style="padding:12px 20px 16px 20px;font-size:18px;font-weight:bold;color:#1c1917;font-family:Arial,Helvetica,sans-serif;">Totale</td>
+                  <td style="padding:12px 20px 16px 20px;font-size:18px;font-weight:bold;color:#1c1917;text-align:right;font-family:Arial,Helvetica,sans-serif;">${fmt(quote.total)} &euro;</td>
+                </tr>
+
+                <!-- Separator -->
+                <tr>
+                  <td colspan="2" style="padding:0 20px;">
+                    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
+                      <tr><td style="border-top:1px solid #e7e5e4;font-size:1px;line-height:1px;">&nbsp;</td></tr>
+                    </table>
+                  </td>
+                </tr>
+
+                <!-- Pagamento -->
+                <tr>
+                  <td style="padding:12px 20px 4px 20px;font-size:13px;color:#78716c;font-family:Arial,Helvetica,sans-serif;">Pagamento</td>
+                  <td style="padding:12px 20px 4px 20px;font-size:14px;color:#1c1917;text-align:right;font-family:Arial,Helvetica,sans-serif;">${esc(quote.payment_terms)}</td>
+                </tr>
+
+                <!-- Validit&agrave; -->
+                <tr>
+                  <td style="padding:4px 20px 16px 20px;font-size:13px;color:#78716c;font-family:Arial,Helvetica,sans-serif;">Validit&agrave;</td>
+                  <td style="padding:4px 20px 16px 20px;font-size:14px;color:#1c1917;text-align:right;font-family:Arial,Helvetica,sans-serif;">${quote.validity_days} giorni</td>
+                </tr>
+
+              </table>
+            </td>
+          </tr>
+
+          <!-- ===== CTA BUTTONS ===== -->
+          <tr>
+            <td style="padding:32px 40px 0 40px;" align="center">
+              <!-- View button (teal) -->
+              <table role="presentation" cellpadding="0" cellspacing="0" border="0" align="center">
+                <tr>
+                  <td align="center" style="background-color:#0d9488;border-radius:8px;">
+                    <a href="${viewUrl}" target="_blank" style="display:inline-block;padding:15px 40px;font-family:Arial,Helvetica,sans-serif;font-size:15px;font-weight:bold;color:#ffffff;text-decoration:none;border-radius:8px;min-width:240px;text-align:center;">
+                      Visualizza preventivo completo
+                    </a>
+                  </td>
+                </tr>
+              </table>
+            </td>
+          </tr>
+          <tr>
+            <td style="padding:14px 40px 0 40px;" align="center">
+              <!-- Accept button (green, prominent) -->
+              <table role="presentation" cellpadding="0" cellspacing="0" border="0" align="center">
+                <tr>
+                  <td align="center" style="background-color:#059669;border-radius:8px;">
+                    <a href="${acceptUrl}" target="_blank" style="display:inline-block;padding:17px 40px;font-family:Arial,Helvetica,sans-serif;font-size:16px;font-weight:bold;color:#ffffff;text-decoration:none;border-radius:8px;min-width:240px;text-align:center;letter-spacing:0.02em;">
+                      &#10003; Accetta preventivo
+                    </a>
+                  </td>
+                </tr>
+              </table>
+            </td>
+          </tr>
+
+          <!-- ===== NOTES (if any) ===== -->
+          ${quote.notes ? `<tr>
+            <td style="padding:28px 40px 0 40px;">
+              <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
+                <tr>
+                  <td style="border-left:3px solid #0d9488;padding:12px 16px;font-family:Arial,Helvetica,sans-serif;font-size:13px;color:#57534e;line-height:1.6;background-color:#f0fdfa;border-radius:0 6px 6px 0;">
+                    <strong style="color:#1c1917;">Note:</strong><br>${esc(quote.notes)}
+                  </td>
+                </tr>
+              </table>
+            </td>
+          </tr>` : ""}
+
+          <!-- ===== FOOTER ===== -->
+          <tr>
+            <td style="padding:32px 40px 36px 40px;">
+              <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
+                <tr>
+                  <td style="border-top:1px solid #e7e5e4;padding-top:20px;">
+                    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
+                      <tr>
+                        <td style="font-family:Arial,Helvetica,sans-serif;font-size:12px;color:#a8a29e;line-height:1.6;">
+                          Preventivo inviato tramite <strong style="color:#78716c;">Preventivo EASY</strong>
+                        </td>
+                      </tr>
+                      <tr>
+                        <td style="font-family:Arial,Helvetica,sans-serif;font-size:11px;color:#d6d3d1;line-height:1.5;padding-top:8px;">
+                          Questa email &egrave; stata generata automaticamente.
+                          Se non ha richiesto alcun preventivo, pu&ograve; ignorare questo messaggio.
+                        </td>
+                      </tr>
+                    </table>
+                  </td>
+                </tr>
+              </table>
+            </td>
+          </tr>
+
+        </table>
+        <!-- End main container -->
+
+      </td>
+    </tr>
   </table>
+  <!-- End outer wrapper -->
 </body>
 </html>`;
 }
 
 function buildAcceptedNotificationHTML(quote, detailUrl) {
   const createdDate = new Date(quote.created_at).toLocaleDateString("it-IT", {
-    day: "2-digit", month: "long", year: "numeric"
+    day: "2-digit",
+    month: "long",
+    year: "numeric",
   });
 
+  const jobDesc = quote.job_description && quote.job_description.length > 100
+    ? quote.job_description.substring(0, 97) + "..."
+    : quote.job_description;
+
   return `<!DOCTYPE html>
-<html lang="it">
-<head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0"></head>
-<body style="margin:0;padding:0;background:#f0f2f5;font-family:'Inter',-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;font-size:14px;color:#1e1e2d">
-  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#f0f2f5;padding:24px 0">
-    <tr><td align="center">
-      <table role="presentation" width="640" cellpadding="0" cellspacing="0" style="background:#fff;border-radius:16px;overflow:hidden;box-shadow:0 4px 24px rgba(0,0,0,.08)">
+<html lang="it" xmlns="http://www.w3.org/1999/xhtml">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1.0">
+  <meta http-equiv="X-UA-Compatible" content="IE=edge">
+  <title>Preventivo Accettato</title>
+</head>
+<body style="margin:0;padding:0;background-color:#f5f5f4;font-family:Arial,Helvetica,sans-serif;font-size:14px;color:#1c1917;-webkit-text-size-adjust:100%;-ms-text-size-adjust:100%;">
+  <!-- Outer wrapper -->
+  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="background-color:#f5f5f4;">
+    <tr>
+      <td align="center" style="padding:32px 16px;">
 
-        <!-- Header -->
-        <tr><td style="background:linear-gradient(135deg,#059669 0%,#047857 100%);color:#fff;padding:32px 36px">
-          <h1 style="margin:0 0 4px;font-size:1.3rem;font-weight:700;letter-spacing:-.02em">Preventivo Accettato!</h1>
-          <span style="font-size:.82rem;opacity:.7">${esc(quote.quote_id)} &middot; ${createdDate}</span>
-        </td></tr>
+        <!-- Main container 600px -->
+        <table role="presentation" width="600" cellpadding="0" cellspacing="0" border="0" style="max-width:600px;width:100%;background-color:#ffffff;border-radius:8px;overflow:hidden;">
 
-        <!-- Body -->
-        <tr><td style="padding:36px">
-          <p style="margin:0 0 20px;font-size:.95rem;line-height:1.6;color:#374151">
-            Il cliente <strong>${esc(quote.client.name)}</strong> (${esc(quote.client.email)}) ha accettato il preventivo.
-          </p>
+          <!-- ===== HEADER ===== -->
+          <tr>
+            <td style="background-color:#059669;padding:36px 40px 32px 40px;">
+              <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
+                <tr>
+                  <td style="font-family:Arial,Helvetica,sans-serif;font-size:24px;font-weight:bold;color:#ffffff;line-height:1.3;">
+                    &#10003; Preventivo accettato!
+                  </td>
+                </tr>
+                <tr>
+                  <td style="font-family:Arial,Helvetica,sans-serif;font-size:13px;color:#a7f3d0;padding-top:8px;">
+                    ${esc(quote.quote_id)} &middot; ${createdDate}
+                  </td>
+                </tr>
+              </table>
+            </td>
+          </tr>
 
-          <!-- Summary card -->
-          <div style="background:#f8f9fb;border-radius:10px;padding:20px 24px;margin-bottom:24px">
-            <p style="margin:0 0 8px;font-size:.82rem;text-transform:uppercase;letter-spacing:.08em;color:#9ca3af;font-weight:600">Riepilogo</p>
-            <p style="margin:0 0 4px;font-size:.95rem"><strong>Lavoro:</strong> ${esc(quote.job_description)}</p>
-            <p style="margin:0;font-size:1.2rem;font-weight:700;color:#059669;margin-top:12px">Totale: ${fmt(quote.total)} ${esc(quote.currency)}</p>
-          </div>
+          <!-- ===== BODY ===== -->
+          <tr>
+            <td style="padding:32px 40px 8px 40px;">
+              <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
+                <tr>
+                  <td style="font-family:Arial,Helvetica,sans-serif;font-size:15px;line-height:1.7;color:#374151;">
+                    Ottima notizia! Il cliente ha accettato il suo preventivo.
+                  </td>
+                </tr>
+              </table>
+            </td>
+          </tr>
 
-          <div style="text-align:center;margin:28px 0 8px">
-            <a href="${detailUrl}" style="display:inline-block;padding:12px 28px;background:linear-gradient(135deg,#2563eb,#1d4ed8);color:#fff;font-size:.88rem;font-weight:600;border-radius:10px;text-decoration:none;box-shadow:0 2px 8px rgba(37,99,235,.25)">Vedi dettaglio</a>
-          </div>
-        </td></tr>
+          <!-- ===== CLIENT INFO CARD ===== -->
+          <tr>
+            <td style="padding:20px 40px 8px 40px;">
+              <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="background-color:#f0fdf4;border:1px solid #bbf7d0;border-radius:8px;overflow:hidden;">
+                <tr>
+                  <td colspan="2" style="padding:14px 20px 10px 20px;border-bottom:1px solid #bbf7d0;">
+                    <span style="font-family:Arial,Helvetica,sans-serif;font-size:11px;font-weight:bold;text-transform:uppercase;letter-spacing:0.08em;color:#15803d;">Dati cliente</span>
+                  </td>
+                </tr>
+                <tr>
+                  <td style="padding:10px 20px 4px 20px;font-size:13px;color:#4b5563;font-family:Arial,Helvetica,sans-serif;">Nome</td>
+                  <td style="padding:10px 20px 4px 20px;font-size:14px;color:#1c1917;text-align:right;font-family:Arial,Helvetica,sans-serif;font-weight:bold;">${esc(quote.client.name)}</td>
+                </tr>
+                <tr>
+                  <td style="padding:4px 20px 14px 20px;font-size:13px;color:#4b5563;font-family:Arial,Helvetica,sans-serif;">Email</td>
+                  <td style="padding:4px 20px 14px 20px;font-size:14px;color:#1c1917;text-align:right;font-family:Arial,Helvetica,sans-serif;">
+                    <a href="mailto:${esc(quote.client.email)}" style="color:#059669;text-decoration:none;">${esc(quote.client.email)}</a>
+                  </td>
+                </tr>
+              </table>
+            </td>
+          </tr>
 
-      </table>
-    </td></tr>
+          <!-- ===== QUOTE SUMMARY CARD ===== -->
+          <tr>
+            <td style="padding:12px 40px 8px 40px;">
+              <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="background-color:#fafaf9;border:1px solid #e7e5e4;border-radius:8px;overflow:hidden;">
+                <tr>
+                  <td colspan="2" style="padding:14px 20px 10px 20px;border-bottom:1px solid #e7e5e4;">
+                    <span style="font-family:Arial,Helvetica,sans-serif;font-size:11px;font-weight:bold;text-transform:uppercase;letter-spacing:0.08em;color:#a8a29e;">Riepilogo preventivo</span>
+                  </td>
+                </tr>
+                <tr>
+                  <td style="padding:10px 20px 4px 20px;font-size:13px;color:#78716c;font-family:Arial,Helvetica,sans-serif;">Lavoro</td>
+                  <td style="padding:10px 20px 4px 20px;font-size:14px;color:#1c1917;text-align:right;font-family:Arial,Helvetica,sans-serif;">${esc(jobDesc)}</td>
+                </tr>
+                <tr>
+                  <td style="padding:4px 20px 0 20px;" colspan="2">
+                    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
+                      <tr><td style="border-top:1px solid #e7e5e4;font-size:1px;line-height:1px;padding-top:4px;">&nbsp;</td></tr>
+                    </table>
+                  </td>
+                </tr>
+                <tr>
+                  <td style="padding:10px 20px 16px 20px;font-size:18px;font-weight:bold;color:#059669;font-family:Arial,Helvetica,sans-serif;">Totale</td>
+                  <td style="padding:10px 20px 16px 20px;font-size:18px;font-weight:bold;color:#059669;text-align:right;font-family:Arial,Helvetica,sans-serif;">${fmt(quote.total)} &euro;</td>
+                </tr>
+              </table>
+            </td>
+          </tr>
+
+          <!-- ===== CTA BUTTON ===== -->
+          <tr>
+            <td style="padding:28px 40px 0 40px;" align="center">
+              <table role="presentation" cellpadding="0" cellspacing="0" border="0" align="center">
+                <tr>
+                  <td align="center" style="background-color:#0d9488;border-radius:8px;">
+                    <a href="${detailUrl}" target="_blank" style="display:inline-block;padding:15px 40px;font-family:Arial,Helvetica,sans-serif;font-size:15px;font-weight:bold;color:#ffffff;text-decoration:none;border-radius:8px;min-width:200px;text-align:center;">
+                      Vedi dettaglio preventivo
+                    </a>
+                  </td>
+                </tr>
+              </table>
+            </td>
+          </tr>
+
+          <!-- ===== FOOTER ===== -->
+          <tr>
+            <td style="padding:32px 40px 36px 40px;">
+              <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
+                <tr>
+                  <td style="border-top:1px solid #e7e5e4;padding-top:20px;">
+                    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
+                      <tr>
+                        <td style="font-family:Arial,Helvetica,sans-serif;font-size:12px;color:#a8a29e;line-height:1.6;">
+                          Notifica da <strong style="color:#78716c;">Preventivo EASY</strong>
+                        </td>
+                      </tr>
+                      <tr>
+                        <td style="font-family:Arial,Helvetica,sans-serif;font-size:11px;color:#d6d3d1;line-height:1.5;padding-top:8px;">
+                          Questa &egrave; una notifica automatica relativa a un preventivo gestito tramite la piattaforma.
+                        </td>
+                      </tr>
+                    </table>
+                  </td>
+                </tr>
+              </table>
+            </td>
+          </tr>
+
+        </table>
+        <!-- End main container -->
+
+      </td>
+    </tr>
   </table>
+  <!-- End outer wrapper -->
 </body>
 </html>`;
 }

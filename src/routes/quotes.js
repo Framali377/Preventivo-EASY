@@ -2,8 +2,8 @@
 const express = require("express");
 const router = express.Router();
 const { getQuoteById, updateQuote, deleteQuote, loadQuotes } = require("../utils/storage");
-const { sendQuoteEmail, isAvailable: smtpAvailable } = require("../utils/mailer");
-const { buildQuoteHTML } = require("../utils/htmlBuilders");
+const { sendOrLog } = require("../utils/mailer");
+const { buildQuoteEmailHTML } = require("../utils/emailTemplates");
 const feedback = require("../utils/feedback");
 
 const VALID_STATUSES = ["draft", "sent", "accepted", "acconto_pagato", "rejected", "expired"];
@@ -62,7 +62,7 @@ router.patch("/:id/status", (req, res) => {
   res.json({ success: true, quote: updated });
 });
 
-// POST /api/quotes/:id/send — invia via email o segna come inviato
+// POST /api/quotes/:id/send — invia via email
 router.post("/:id/send", async (req, res) => {
   const quote = getQuoteById(req.params.id);
   if (!quote) return res.status(404).json({ success: false, error: "Preventivo non trovato" });
@@ -73,22 +73,31 @@ router.post("/:id/send", async (req, res) => {
   }
 
   const to = req.body.email || quote.client?.email;
-
-  // Se SMTP configurato, invia email
-  if (smtpAvailable() && to) {
-    try {
-      const html = buildQuoteHTML(quote);
-      await sendQuoteEmail(to, `Preventivo ${quote.quote_id}`, html);
-      updateQuote(req.params.id, { status: "sent", sent_at: new Date().toISOString(), sent_to: to });
-      return res.json({ success: true, message: `Preventivo inviato a ${to}` });
-    } catch (err) {
-      return res.status(500).json({ success: false, error: err.message });
-    }
+  if (!to) {
+    return res.status(400).json({ success: false, error: "Nessun indirizzo email disponibile" });
   }
 
-  // Fallback: segna come inviato senza email
-  updateQuote(req.params.id, { status: "sent", sent_at: new Date().toISOString() });
-  res.json({ success: true, message: "Preventivo segnato come inviato" });
+  try {
+    const baseUrl = req.baseUrl_resolved || `${req.protocol}://${req.get("host")}`;
+    const acceptUrl = `${baseUrl}/q/${quote.quote_id}/accept`;
+    const viewUrl = `${baseUrl}/q/${quote.quote_id}`;
+    const html = buildQuoteEmailHTML(quote, acceptUrl, viewUrl);
+    const result = await sendOrLog(to, `Preventivo ${quote.quote_id}`, html, quote.quote_id);
+
+    if (result.sent) {
+      updateQuote(req.params.id, { status: "sent", sent_at: new Date().toISOString(), sent_to: to, email_status: "sent", email_sent_at: new Date().toISOString(), email_error: null });
+      return res.json({ success: true, message: `Preventivo inviato a ${to}` });
+    } else if (result.logged) {
+      updateQuote(req.params.id, { status: "sent", sent_at: new Date().toISOString(), sent_to: to, email_status: "logged", email_sent_at: new Date().toISOString(), email_error: null });
+      return res.json({ success: true, message: "Preventivo segnato come inviato (email salvata localmente)" });
+    } else {
+      updateQuote(req.params.id, { email_status: "failed", email_error: result.error });
+      return res.status(500).json({ success: false, error: result.error || "Invio email fallito" });
+    }
+  } catch (err) {
+    updateQuote(req.params.id, { email_status: "failed", email_error: err.message });
+    return res.status(500).json({ success: false, error: err.message });
+  }
 });
 
 // DELETE /api/quotes/:id

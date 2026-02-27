@@ -63,10 +63,13 @@ router.post("/:quote_id/accept", async (req, res) => {
   try {
     const owner = getUserById(quote.owner_user_id);
     if (owner && owner.email) {
-      const baseUrl = `${req.protocol}://${req.get("host")}`;
+      const baseUrl = req.baseUrl_resolved || `${req.protocol}://${req.get("host")}`;
       const detailUrl = `${baseUrl}/quotes/${quote.quote_id}`;
       const html = buildAcceptedNotificationHTML(updated, detailUrl);
-      await sendOrLog(owner.email, `Preventivo ${quote.quote_id} accettato`, html, quote.quote_id);
+      const notifResult = await sendOrLog(owner.email, `Preventivo ${quote.quote_id} accettato`, html, quote.quote_id);
+      if (notifResult.failed) {
+        console.warn(`[Accept] Notifica al professionista fallita per ${quote.quote_id}: ${notifResult.error}`);
+      }
     }
   } catch (err) {
     console.error("[Accept] Errore invio notifica:", err.message);

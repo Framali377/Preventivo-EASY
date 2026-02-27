@@ -13,7 +13,7 @@
     "Consulenti": {
       "professions": ["avvocato", "commercialista", "consulente aziendale", "consulente IT", "consulente del lavoro", "notaio"],
       "prompt_hint": "Scomponi il lavoro in voci realistiche: onorario/parcella professionale, analisi e studio della pratica, consulenza e assistenza, spese accessorie, bolli e diritti. NON usare MAI le voci 'manodopera' o 'materiali'",
-      "typical_items": ["onorario/parcella", "analisi e studio", "consulenza", "spese accessorie", "bolli e diritti"]
+      "typical_items": ["contenzioso civile", "consulenza contrattuale", "redazione atti", "diritto societario", "recupero crediti", "consulenza fiscale", "assistenza stragiudiziale", "onorario/parcella", "analisi e studio", "spese accessorie", "bolli e diritti"]
     },
     "Sanitario": {
       "professions": ["medico", "odontoiatra", "psicologo", "fisioterapista", "veterinario"],

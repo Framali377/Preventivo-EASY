@@ -2,12 +2,33 @@
 const axios = require("axios");
 const path = require("path");
 const fs = require("fs");
-const { getUserPrompt } = require("./userPrompts");
+const { getUserPrompt, getUserBehaviorProfile } = require("./userPrompts");
+const { loadQuotes } = require("./storage");
 
 // ── Load profession templates ──
 const professionTemplates = JSON.parse(
   fs.readFileSync(path.join(__dirname, "../data/professionTemplates.json"), "utf-8")
 );
+
+// ── Categorie professionali non artigiane ──
+const NON_ARTIGIANO_PROFESSIONS = [
+  "avvocato", "commercialista", "consulente aziendale", "consulente IT",
+  "consulente del lavoro", "notaio", "geometra", "ingegnere", "architetto",
+  "perito industriale", "tecnico informatico", "medico", "odontoiatra",
+  "psicologo", "fisioterapista", "veterinario", "grafico", "fotografo",
+  "web designer", "videomaker", "traduttore", "copywriter"
+];
+
+function isNonArtigiano(category) {
+  if (!category) return false;
+  const cat = category.toLowerCase().trim();
+  if (NON_ARTIGIANO_PROFESSIONS.includes(cat)) return true;
+  // Check by group
+  for (const [groupName, group] of Object.entries(professionTemplates.groups)) {
+    if (groupName !== "Artigiani" && group.professions.includes(cat)) return true;
+  }
+  return false;
+}
 
 function getPromptHintForProfession(category) {
   if (!category) return "Scomponi il lavoro in voci realistiche (materiali, manodopera, eventuali costi accessori)";
@@ -16,6 +37,10 @@ function getPromptHintForProfession(category) {
     if (group.professions.includes(cat)) {
       return group.prompt_hint;
     }
+  }
+  // Fallback: se non artigiano, NON suggerire manodopera/materiali
+  if (isNonArtigiano(cat)) {
+    return "Scomponi il lavoro in voci professionali realistiche: onorario/parcella, analisi e studio, redazione documenti, assistenza, spese vive. NON usare MAI voci come 'manodopera', 'materiali', 'trasporto', 'smaltimento'";
   }
   return "Scomponi il lavoro in voci realistiche (materiali, manodopera, eventuali costi accessori)";
 }
@@ -49,17 +74,20 @@ REGOLE:
 
 // ── Nuovo system prompt: suggerimenti costo/margine, NON prezzi finali ──
 
-function buildCostSuggestionsPrompt(language, userContext, professionCategory) {
+function buildCostSuggestionsPrompt(language, userContext, professionCategory, options) {
   const lang = language === "it" ? "italiano" : "English";
   const hint = getPromptHintForProfession(professionCategory);
+  const { jobType, priceLevel, urgency, notes, behaviorProfile } = options || {};
 
   let base = `Sei un assistente esperto nella stima dei costi per il mercato italiano.
-Il tuo compito è suggerire COSTI UNITARI e MARGINI per ogni voce di un preventivo.
+Il tuo compito è analizzare una DESCRIZIONE LIBERA di un lavoro/incarico e generare le voci del preventivo con COSTI UNITARI e MARGINI.
 NON calcolare mai il prezzo finale — lo farà il motore di pricing del sistema.
 Rispondi in ${lang}.
 
 REGOLE:
+- Analizza la descrizione libera dell'utente ed estrai le singole voci di preventivo
 - ${hint}
+- Genera voci DETTAGLIATE e SPECIFICHE basate sulla descrizione fornita, non generiche
 - Per ogni voce suggerisci:
   - suggested_unit_cost: il costo reale stimato (quanto costa al professionista)
   - suggested_margin_percent: il margine suggerito (tipicamente 20-40%)
@@ -67,11 +95,69 @@ REGOLE:
 - confidence: "high" se sei sicuro della stima, "medium" se ragionevole, "low" se incerto
 - explanation: spiega SEMPRE brevemente come hai stimato il costo (fonte, logica, riferimento mercato)
 - needs_input: true se servono più dettagli dall'utente per una stima accurata
+- Se la descrizione menziona metrature, quantita o materiali specifici, usali per calcoli precisi
+- Genera tra 3 e 8 voci, non di piu a meno che il lavoro non sia molto complesso
 - NON inventare voci generiche senza spiegazione
 - Rispondi SOLO con JSON valido, nessun testo aggiuntivo`;
 
+  // ── Guardrail per professioni non artigiane ──
+  if (isNonArtigiano(professionCategory)) {
+    base += `\n
+REGOLE TASSATIVE PER PROFESSIONI INTELLETTUALI/NON ARTIGIANE:
+- VIETATO usare le voci: "manodopera", "materiali", "trasporto", "smaltimento", "movimentazione", "posa in opera", "fornitura e posa", "calcinacci", "massetto"
+- La struttura DEVE seguire questo schema:
+  1. Onorario professionale (voce principale)
+  2. Studio e analisi preliminare
+  3. Redazione atti/pareri/documenti/relazioni (specifica per il tipo di incarico)
+  4. Attivita continuativa / assistenza (se applicabile)
+  5. Spese vive documentate (bolli, diritti, cancelleria — sempre separata e opzionale)
+- Usa terminologia professionale reale, NON generica
+- Ogni voce deve essere credibile per un professionista che emette parcella
+- Se non conosci il tipo di incarico specifico, usa la struttura standard sopra`;
+  }
+
+  if (jobType) {
+    base += `\n\nTipo di incarico selezionato: "${jobType}". Genera voci SPECIFICHE e credibili per questo tipo di incarico professionale. Non generare voci generiche.`;
+  }
+
+  if (priceLevel) {
+    const marginGuide = {
+      economico: "margini contenuti 15-25%",
+      standard: "margini medi 25-35%",
+      premium: "margini alti 35-50%, qualità e servizio superiori"
+    };
+    base += `\nLivello prezzo: ${priceLevel} — ${marginGuide[priceLevel] || marginGuide.standard}.`;
+  }
+
+  if (urgency && urgency !== "normale") {
+    const surcharge = { urgente: 15, emergenza: 30 };
+    base += `\nUrgenza: ${urgency} — applica maggiorazione di circa ${surcharge[urgency] || 0}% sui costi.`;
+  }
+
+  if (notes) {
+    base += `\nNote aggiuntive dal professionista: ${notes}`;
+  }
+
   if (userContext) {
     base += `\n\nCONTESTO PROFESSIONISTA (appreso dai preventivi precedenti):\n${userContext}`;
+  }
+
+  if (behaviorProfile) {
+    const bp = behaviorProfile;
+    let bpText = `\nPROFILO COMPORTAMENTALE (dati statistici reali):`;
+    if (bp.avg_margin) bpText += `\n- Margine medio abituale: ${bp.avg_margin}%`;
+    if (bp.avg_prices && Object.keys(bp.avg_prices).length) {
+      bpText += `\n- Prezzi medi per fascia: ${Object.entries(bp.avg_prices).map(([k, v]) => `${k}: ${v}€`).join(", ")}`;
+    }
+    if (bp.frequent_items && bp.frequent_items.length) {
+      bpText += `\n- Voci frequenti: ${bp.frequent_items.slice(0, 8).join(", ")}`;
+    }
+    if (bp.typical_item_count) bpText += `\n- Numero voci tipico per preventivo: ${bp.typical_item_count}`;
+    if (bp.price_range && bp.price_range.max > 0) {
+      bpText += `\n- Range prezzi totali: ${bp.price_range.min}€ - ${bp.price_range.max}€`;
+    }
+    bpText += `\nALLINEA i tuoi suggerimenti a questi dati storici.`;
+    base += bpText;
   }
 
   return base;
@@ -146,6 +232,25 @@ async function generateCostSuggestions(input) {
     }
   }
 
+  // Profilo comportamentale se l'utente ha almeno 3 preventivi
+  let behaviorProfile = null;
+  if (input.user_id) {
+    try {
+      const allQuotes = loadQuotes();
+      behaviorProfile = getUserBehaviorProfile(input.user_id, allQuotes);
+    } catch (e) {
+      console.error("[Claude] Errore caricamento profilo comportamentale:", e.message);
+    }
+  }
+
+  const promptOptions = {
+    jobType: input.jobType || null,
+    priceLevel: input.priceLevel || null,
+    urgency: input.urgency || null,
+    notes: input.notes || null,
+    behaviorProfile
+  };
+
   const userPrompt = `Analizza questo lavoro e suggerisci costi e margini per ogni voce:
 
 ${JSON.stringify(input, null, 2)}
@@ -174,7 +279,7 @@ Rispondi SOLO con questo formato JSON:
       model: "claude-sonnet-4-5-20250929",
       max_tokens: 1024,
       temperature: 0.3,
-      system: buildCostSuggestionsPrompt(language, userContext, input.profession || (input.professional && input.professional.category)),
+      system: buildCostSuggestionsPrompt(language, userContext, input.profession || (input.professional && input.professional.category), promptOptions),
       messages: [{ role: "user", content: userPrompt }]
     },
     {

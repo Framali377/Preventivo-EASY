@@ -17,3 +17,19 @@ services:
         sync: false
       - key: STRIPE_WEBHOOK_SECRET
         sync: false
+      - key: SMTP_HOST
+        sync: false
+      - key: SMTP_PORT
+        sync: false
+      - key: SMTP_USER
+        sync: false
+      - key: SMTP_PASS
+        sync: false
+      - key: SMTP_FROM_NAME
+        value: "Preventivo EASY"
+      - key: SMTP_FROM_EMAIL
+        sync: false
+      - key: APP_URL
+        value: "https://preventivoeasy.it"
+      - key: ADMIN_RESET_SECRET
+        sync: false
