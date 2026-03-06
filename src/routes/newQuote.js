@@ -115,8 +115,25 @@ router.get("/new", (req, res) => {
     `<option value="${esc(tp.id)}"${userTaxProfile === tp.id ? " selected" : ""}>${esc(tp.name)}</option>`
   ).join("");
 
-  // Placeholder for description
-  const descPlaceholder = "Descrivi il lavoro da preventivare in modo dettagliato.\\nEs: Rifacimento bagno completo 8mq con demolizione, impermeabilizzazione, posa piastrelle 60x60 e installazione sanitari sospesi Ideal Standard...";
+  // Dynamic placeholder based on profession category
+  const descPlaceholders = {
+    idraulico: "Es: Sostituzione caldaia a condensazione 24kW in appartamento, incluso smontaggio vecchio impianto, adeguamento scarico fumi e collaudo finale.",
+    elettricista: "Es: Rifacimento completo impianto elettrico appartamento 80mq, quadro con 4 differenziali, 30 punti luce, certificazione.",
+    muratore: "Es: Ristrutturazione bagno 9mq: demolizione pavimento e rivestimento, massetto, impermeabilizzazione, posa gres 60x60.",
+    falegname: "Es: Armadio su misura in noce 280x260cm, 3 ante scorrevoli, cassettiera interna e ripiani regolabili.",
+    imbianchino: "Es: Tinteggiatura appartamento 100mq (5 stanze + corridoio), preparazione pareti, stuccatura crepe, 2 mani di idropittura lavabile.",
+    giardiniere: "Es: Progettazione e realizzazione giardino 200mq: impianto irrigazione, prato a rotoli, siepe di alloro, 3 ulivi.",
+    avvocato: "Es: Assistenza legale per recupero crediti di 15.000 EUR: studio pratica, redazione diffida, eventuale ricorso per decreto ingiuntivo.",
+    commercialista: "Es: Consulenza fiscale per apertura SRL: analisi forma giuridica, redazione statuto, pratiche Camera di Commercio e Agenzia Entrate.",
+    architetto: "Es: Progettazione ristrutturazione appartamento 90mq: rilievo, progetto esecutivo, pratica CILA, direzione lavori e collaudo.",
+    geometra: "Es: Accatastamento e variazione catastale per frazionamento unita immobiliare, rilievo topografico e pratica al Catasto.",
+    odontoiatra: "Es: Piano di trattamento implantologico: visita specialistica con OPT, inserimento impianto in titanio, corona in zirconio-ceramica.",
+    fisioterapista: "Es: Ciclo di 10 sedute di riabilitazione post-intervento al ginocchio, valutazione iniziale e piano terapeutico personalizzato.",
+    "web designer": "Es: Sito web vetrina 5 pagine per studio professionale: wireframe, design responsive, sviluppo, SEO base, hosting annuale.",
+    fotografo: "Es: Servizio fotografico aziendale: 4 ore di shooting in studio, 30 foto ritoccate in alta risoluzione, consegna digitale.",
+    _default: "Descrivi il lavoro in modo dettagliato: tipo di intervento, dimensioni/quantita, materiali preferiti, eventuali urgenze."
+  };
+  const descPlaceholder = descPlaceholders[userCategory.toLowerCase()] || descPlaceholders._default;
 
   const extraCss = `
     /* ── Step indicators ── */
@@ -144,16 +161,6 @@ router.get("/new", (req, res) => {
     .char-counter .count{font-weight:500}
     .char-counter .count.good{color:#22c55e}
     .char-counter .count.short{color:#f59e0b}
-
-    /* ── Price cards ── */
-    .price-cards-row{display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px}
-    @media(max-width:640px){.price-cards-row{grid-template-columns:1fr}}
-    .price-card{padding:16px;border:2px solid #e5e7eb;border-radius:12px;cursor:pointer;transition:all .2s;text-align:center}
-    .price-card:hover{border-color:#5eead4;transform:translateY(-1px)}
-    .price-card.selected{border-color:#0d9488;background:#f0fdfa}
-    .price-card-icon{font-size:1.5rem;margin-bottom:4px}
-    .price-card-title{font-weight:700;font-size:.88rem}
-    .price-card-desc{font-size:.75rem;color:#9ca3af;margin-top:2px}
 
     /* ── Fiscal summary ── */
     .fiscal-summary{background:linear-gradient(135deg,#f0fdfa,#f8fffe);border:1px solid #ccfbf1;border-radius:10px;padding:12px 18px;margin-top:14px;display:flex;align-items:center;gap:8px;font-size:.85rem;color:#115e59}
@@ -262,8 +269,8 @@ router.get("/new", (req, res) => {
 
       <!-- Step tabs -->
       <div class="step-tabs">
-        <div class="step-tab active" id="tab1" onclick="window._goStep(1)">1. Descrivi il lavoro</div>
-        <div class="step-tab" id="tab2">2. Anteprima e modifica</div>
+        <div class="step-tab active" id="tab1" onclick="window._goStep(1)">Descrizione</div>
+        <div class="step-tab" id="tab2">Anteprima</div>
       </div>
 
       <div id="error" class="alert alert-error" style="display:none"></div>
@@ -294,8 +301,8 @@ router.get("/new", (req, res) => {
           <button class="btn btn-primary" id="saveProfile" style="margin-top:14px">Salva profilo</button>
         </div>` : ''}
 
-        <h2 style="font-size:1.15rem;margin-bottom:4px;font-weight:700">Dati cliente e lavoro</h2>
-        <p style="color:#888;font-size:.85rem;margin-bottom:24px">Inserisci le informazioni del cliente e descrivi il lavoro da preventivare.</p>
+        <h2 style="font-size:1.1rem;margin-bottom:4px;font-weight:700">Dati cliente e lavoro</h2>
+        <p style="color:#9ca3af;font-size:.84rem;margin-bottom:24px">Compila i dati del cliente e descrivi il lavoro nel modo pi&ugrave; preciso possibile.</p>
 
         <!-- Client fields -->
         <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:16px">
@@ -350,30 +357,7 @@ router.get("/new", (req, res) => {
           </div>
         </div>
 
-        <!-- Price level -->
-        <div class="field">
-          <label>Fascia prezzo</label>
-          <div class="price-cards-row" id="priceCardsRow">
-            <div class="price-card" data-price="economico" onclick="window._selectPrice(this)">
-              <div class="price-card-icon">&#128176;</div>
-              <div class="price-card-title">Economico</div>
-              <div class="price-card-desc">Prezzi competitivi</div>
-            </div>
-            <div class="price-card selected" data-price="standard" onclick="window._selectPrice(this)">
-              <div class="price-card-icon">&#9878;</div>
-              <div class="price-card-title">Standard</div>
-              <div class="price-card-desc">Qualit&agrave; e prezzo in equilibrio</div>
-            </div>
-            <div class="price-card" data-price="premium" onclick="window._selectPrice(this)">
-              <div class="price-card-icon">&#11088;</div>
-              <div class="price-card-title">Premium</div>
-              <div class="price-card-desc">Servizio e qualit&agrave; top</div>
-            </div>
-          </div>
-        </div>
-
         <div class="fiscal-summary" id="fiscalSummary">
-          <span style="font-size:1.2rem">&#128196;</span>
           <span id="fiscalSummaryText">Il preventivo includer&agrave;: IVA 22%</span>
         </div>
 
@@ -386,14 +370,14 @@ router.get("/new", (req, res) => {
       <!-- Loading -->
       <div class="loading" id="loadingPanel">
         <div class="spinner"></div>
-        <p>L'AI sta analizzando il lavoro...</p>
-        <div class="loading-sub">Generazione voci, costi e margini in corso</div>
+        <p>Elaborazione del preventivo in corso...</p>
+        <div class="loading-sub">Analisi del lavoro, calcolo voci e prezzi di mercato</div>
       </div>
 
       <!-- ═══ STEP 2: Preview & Edit ═══ -->
       <div class="step-panel" id="panel2">
-        <h2 style="font-size:1.15rem;margin-bottom:4px;font-weight:700">Anteprima del preventivo</h2>
-        <p style="color:#888;font-size:.85rem;margin-bottom:20px">Modifica descrizioni, quantit&agrave; e prezzi. I totali si aggiornano in automatico.</p>
+        <h2 style="font-size:1.1rem;margin-bottom:4px;font-weight:700">Anteprima del preventivo</h2>
+        <p style="color:#9ca3af;font-size:.84rem;margin-bottom:20px">Verifica le voci generate e modifica liberamente. I totali si aggiornano in tempo reale.</p>
 
         <!-- Client summary -->
         <div class="section-heading">Cliente</div>
@@ -581,12 +565,7 @@ router.get("/new", (req, res) => {
     function startRecording() { if (!recognition) return; isRecording = true; finalTranscript = ''; voiceBtn.classList.add('recording'); voiceBtn.title = 'Interrompi dettatura'; try { recognition.start(); } catch(e) {} }
     function stopRecording() { isRecording = false; voiceBtn.classList.remove('recording'); voiceBtn.title = 'Dettatura vocale'; if (recognition) try { recognition.stop(); } catch(e) {} }
 
-    // ── Price card selection ──
-    window._selectPrice = function(card) {
-      document.querySelectorAll('.price-card').forEach(function(c) { c.classList.remove('selected'); });
-      card.classList.add('selected');
-      selectedPriceLevel = card.getAttribute('data-price');
-    };
+    // Price level fixed to standard (no UI selector)
 
     // ── Step navigation ──
     window._goStep = function(n) {
@@ -711,7 +690,7 @@ router.get("/new", (req, res) => {
       var clientName = document.getElementById('clientName').value;
       var clientEmail = document.getElementById('clientEmail').value;
       document.getElementById('summaryClient').textContent = clientName;
-      document.getElementById('summaryEmail').textContent = clientEmail || 'Email non specificata';
+      document.getElementById('summaryEmail').textContent = clientEmail || '';
       document.getElementById('clientAvatar').textContent = clientName.charAt(0).toUpperCase();
       document.getElementById('summaryJob').textContent = document.getElementById('desc').value;
 
@@ -725,8 +704,8 @@ router.get("/new", (req, res) => {
 
         var confHtml = '';
         if (item.confidence) {
-          var confLabels = { high: 'Alta', medium: 'Media', low: 'Bassa' };
-          confHtml = '<span class="conf-badge ' + item.confidence + '" title="' + escHtml(item.explanation || '') + '"><span class="conf-badge-dot"></span>Stima: ' + (confLabels[item.confidence] || item.confidence) + '</span>';
+          var confLabels = { high: 'Verificato', medium: 'Da verificare', low: 'Incerto' };
+          confHtml = '<span class="conf-badge ' + item.confidence + '" title="' + escHtml(item.explanation || '') + '"><span class="conf-badge-dot"></span>' + (confLabels[item.confidence] || item.confidence) + '</span>';
         }
 
         card.innerHTML =
@@ -752,7 +731,7 @@ router.get("/new", (req, res) => {
         if (item.needs_input || item.confidence === 'low') {
           var niDiv = document.createElement('div');
           niDiv.className = 'needs-input-bar';
-          niDiv.innerHTML = '<span>&#9888; Stima incerta</span><input type="text" class="ni-input" data-idx="' + idx + '" placeholder="Aggiungi dettagli..."><button type="button" onclick="window._reEstimate(' + idx + ',this)">Ricalcola</button>';
+          niDiv.innerHTML = '<span>&#9888; Prezzo da confermare</span><input type="text" class="ni-input" data-idx="' + idx + '" placeholder="Specifica marca, modello o misure..."><button type="button" onclick="window._reEstimate(' + idx + ',this)">Ricalcola</button>';
           card.appendChild(niDiv);
         }
       });
