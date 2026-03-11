@@ -49,7 +49,7 @@ function authPage({ title, cardHtml, script }) {
   <div class="auth-card">
     ${cardHtml}
   </div>
-  <script>${script || ""}</script>
+  <script>(function(){var F=window.fetch;window.fetch=function(u,o){o=o||{};var m=(o.method||'GET').toUpperCase();if(m!=='GET'&&m!=='HEAD'){o.headers=o.headers||{};var c=document.cookie.match(/(?:^|; ?)XSRF-TOKEN=([^;]+)/);if(c)o.headers['X-CSRF-Token']=decodeURIComponent(c[1]);}return F.call(this,u,o);};})();${script || ""}</script>
 </body>
 </html>`;
 }

@@ -22,7 +22,7 @@ const FOOTER_MARK = `
    buildQuoteHTML — Professional quote web view
    ────────────────────────────────────────────────────────────── */
 
-function buildQuoteHTML(quote) {
+function buildQuoteHTML(quote, csrfToken) {
   const createdDate = new Date(quote.created_at).toLocaleDateString("it-IT", {
     day: "2-digit", month: "long", year: "numeric"
   });
@@ -68,6 +68,7 @@ function buildQuoteHTML(quote) {
   /* Accept button — only when status is "sent" */
   const acceptButton = quote.status === "sent"
     ? `<form method="POST" action="/q/${esc(quote.quote_id)}/accept" style="display:inline">
+         <input type="hidden" name="_csrf" value="${esc(csrfToken || "")}">
          <button type="submit" class="btn btn-accept">&#10003;&ensp;Accetta preventivo</button>
        </form>`
     : "";

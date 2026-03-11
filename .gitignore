@@ -6,12 +6,18 @@ cookies.txt
 .claude/
 node_modules/
 
-# env
+# env / secrets
 .env
+.env.*
+!.env.example
 stripe.keys.local.json
+*.keys.json
+*.pem
+*.key
 
 # data (user-generated, not for repo)
 src/data/sessions/
 src/data/users.json
 src/data/quotes.json
 src/data/user_prompts/
+src/data/email_logs/

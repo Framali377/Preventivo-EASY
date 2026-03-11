@@ -198,6 +198,9 @@ function page({ title, user, content, extraCss, script, activePage }) {
     ${content}
   </div>` : content;
 
+  // Global fetch override: auto-include CSRF token on all mutating requests
+  const csrfScript = `(function(){var F=window.fetch;window.fetch=function(u,o){o=o||{};var m=(o.method||'GET').toUpperCase();if(m!=='GET'&&m!=='HEAD'){o.headers=o.headers||{};var c=document.cookie.match(/(?:^|; ?)XSRF-TOKEN=([^;]+)/);if(c)o.headers['X-CSRF-Token']=decodeURIComponent(c[1]);}return F.call(this,u,o);};})();`;
+
   const logoutScript = user ? `
   function doLogout(){
     fetch('/auth/logout',{method:'POST'})
@@ -236,7 +239,7 @@ function page({ title, user, content, extraCss, script, activePage }) {
 </head>
 <body>
   ${shell}
-  <script>${logoutScript}${mobileScript}${script || ""}</script>
+  <script>${csrfScript}${logoutScript}${mobileScript}${script || ""}</script>
 </body>
 </html>`;
 }

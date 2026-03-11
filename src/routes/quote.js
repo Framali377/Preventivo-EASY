@@ -16,7 +16,7 @@ router.get("/:quote_id", (req, res) => {
     return res.status(404).send(build404HTML(req.params.quote_id));
   }
 
-  res.send(buildQuoteHTML(quote));
+  res.send(buildQuoteHTML(quote, req.csrfToken()));
 });
 
 // GET /q/:quote_id/pdf — scarica PDF

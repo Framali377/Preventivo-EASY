@@ -65,6 +65,20 @@ if (isProd && !process.env.SESSION_SECRET) {
   process.exit(1);
 }
 
+const WEAK_SECRETS = ["cambiami-in-produzione", "change-me", "secret", "admin", "password", "test"];
+if (isProd && !process.env.ADMIN_RESET_SECRET) {
+  console.error("[FATAL] ADMIN_RESET_SECRET non impostato in produzione. Uscita.");
+  process.exit(1);
+}
+if (process.env.ADMIN_RESET_SECRET && (WEAK_SECRETS.includes(process.env.ADMIN_RESET_SECRET) || process.env.ADMIN_RESET_SECRET.length < 16)) {
+  if (isProd) {
+    console.error("[FATAL] ADMIN_RESET_SECRET troppo debole. Genera con: node -e \"console.log(require('crypto').randomBytes(32).toString('hex'))\"");
+    process.exit(1);
+  } else {
+    console.warn("[WARN] ADMIN_RESET_SECRET debole — non usare in produzione");
+  }
+}
+
 app.use(
   session({
     store: new FileStore({
@@ -83,6 +97,10 @@ app.use(
     },
   })
 );
+
+// ─── CSRF protection ───
+const csrfProtection = require("./middleware/csrf");
+app.use(csrfProtection({ excludePaths: ["/stripe/webhook"] }));
 
 // ─── Helper: base URL (usa APP_URL se disponibile, altrimenti fallback da request) ───
 function resolveBaseUrl(req) {
@@ -104,20 +122,27 @@ app.get("/", (req, res, next) => {
 });
 app.use("/", landingRoute);
 
+// ─── Rate limiting ───
+const { authLimiter, aiLimiter } = require("./middleware/rateLimiter");
+
 // ─── Pubbliche ───
+app.post("/auth/login", authLimiter);
+app.post("/auth/register", authLimiter);
 app.use("/auth", authRoute);
 app.use("/stripe", stripeRoute);
 app.use("/q", quoteRoute);
 
 // ─── Protette ───
-app.use("/api/generate-quote", requireAuth, generateRoute);
+app.use("/api/generate-quote", requireAuth, aiLimiter, generateRoute);
 app.use("/api/quotes", requireAuth, quotesRoute);
 app.use("/dashboard", requireAuth, dashboardRoute);
+app.post("/quotes/preview", requireAuth, aiLimiter);
+app.post("/quotes/re-estimate-row", requireAuth, aiLimiter);
 app.use("/quotes", requireAuth, require("./routes/newQuote"));
 app.use("/profile", requireAuth, profileRoute);
 app.use("/upgrade", requireAuth, upgradeRoute);
 app.use("/settings/prices", requireAuth, pricesRoute);
-app.post("/ai/suggest-prices", requireAuth, pricesRoute.suggestPricesHandler);
+app.post("/ai/suggest-prices", requireAuth, aiLimiter, pricesRoute.suggestPricesHandler);
 app.use("/admin", require("./routes/admin"));
 
 // ─── Start ───
