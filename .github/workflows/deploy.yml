@@ -25,6 +25,7 @@ jobs:
             cd "$APP_DIR"
             echo "--- Commit prima del pull ---"
             git log -1 --oneline
+            git stash
             git pull origin main
             npm install --production --silent
             pm2 restart preventivo-easy
