@@ -28,8 +28,17 @@ jobs:
             git stash
             git pull origin main
             npm install --production --silent
-            pm2 restart preventivo-easy
-            pm2 save
+            echo "--- Stato PM2 su tutti gli utenti ---"
+            ps aux | grep pm2 | grep -v grep
+            APP_USER=$(ps aux | grep pm2 | grep -v grep | awk '{print $1}' | head -1)
+            echo "PM2 utente: $APP_USER"
+            if [ -n "$APP_USER" ] && [ "$APP_USER" != "root" ]; then
+              su - "$APP_USER" -c "pm2 restart preventivo-easy && pm2 save"
+            else
+              pm2 restart preventivo-easy 2>/dev/null || \
+                pm2 start "$APP_DIR/src/index.js" --name preventivo-easy
+              pm2 save
+            fi
             echo "--- Commit dopo il pull ---"
             git log -1 --oneline
             echo "--- Deploy completato ---"
