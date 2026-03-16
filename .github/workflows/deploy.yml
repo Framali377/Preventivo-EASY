@@ -19,7 +19,10 @@ jobs:
           timeout: 60s
           script: |
             set -e
-            cd /home/appuser/preventivo-ai-beta || cd /root/preventivo-ai-beta
+            echo "--- Ricerca app ---"
+            APP_DIR=$(find /home /root /var/www -name "package.json" -path "*/preventivo*" 2>/dev/null | head -1 | xargs dirname)
+            echo "App trovata in: $APP_DIR"
+            cd "$APP_DIR"
             echo "--- Commit prima del pull ---"
             git log -1 --oneline
             git pull origin main
