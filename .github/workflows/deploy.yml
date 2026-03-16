@@ -14,12 +14,12 @@ jobs:
         with:
           host: 188.213.171.208
           port: 22
-          username: appuser
+          username: root
           password: ${{ secrets.VPS_PASSWORD }}
           timeout: 60s
           script: |
             set -e
-            cd /home/appuser/preventivo-ai-beta
+            cd /home/appuser/preventivo-ai-beta || cd /root/preventivo-ai-beta
             echo "--- Commit prima del pull ---"
             git log -1 --oneline
             git pull origin main
