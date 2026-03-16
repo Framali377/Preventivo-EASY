@@ -1,0 +1,31 @@
+name: Deploy to VPS
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Deploy via SSH
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: 188.213.171.208
+          port: 22
+          username: appuser
+          password: ${{ secrets.VPS_PASSWORD }}
+          timeout: 60s
+          script: |
+            set -e
+            cd /home/appuser/preventivo-ai-beta
+            echo "--- Commit prima del pull ---"
+            git log -1 --oneline
+            git pull origin main
+            npm install --production --silent
+            pm2 restart preventivo-easy
+            pm2 save
+            echo "--- Commit dopo il pull ---"
+            git log -1 --oneline
+            echo "--- Deploy completato ---"
