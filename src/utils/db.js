@@ -1,10 +1,25 @@
 // src/utils/db.js
-const Database = require("better-sqlite3");
 const path = require("path");
 const fs = require("fs");
 
 const DB_PATH = path.join(__dirname, "..", "data", "app.db");
 const DATA_DIR = path.join(__dirname, "..", "data");
+
+// Carica better-sqlite3 con errore chiaro se manca o non è compilato
+let Database;
+try {
+  Database = require("better-sqlite3");
+} catch (loadErr) {
+  console.error("[FATAL] Impossibile caricare better-sqlite3:", loadErr.message);
+  if (loadErr.message.includes("NODE_MODULE_VERSION") || loadErr.message.includes("was compiled against")) {
+    console.error("[HINT] Il modulo nativo non è compatibile con questa versione di Node.");
+    console.error("[HINT] Ricompila con: npm rebuild better-sqlite3");
+  } else if (loadErr.code === "MODULE_NOT_FOUND") {
+    console.error("[HINT] Modulo mancante. Esegui: npm install --production");
+    console.error("[HINT] Il VPS deve avere build-essential e python3 installati.");
+  }
+  process.exit(1);
+}
 
 let _db = null;
 
@@ -13,7 +28,14 @@ function getDb() {
 
   if (!fs.existsSync(DATA_DIR)) fs.mkdirSync(DATA_DIR, { recursive: true });
 
-  _db = new Database(DB_PATH);
+  try {
+    _db = new Database(DB_PATH);
+  } catch (err) {
+    console.error("[FATAL] Impossibile aprire il database SQLite:", err.message);
+    console.error("[PATH]", DB_PATH);
+    process.exit(1);
+  }
+
   _db.pragma("journal_mode = WAL");
   _db.pragma("foreign_keys = ON");
 
@@ -132,4 +154,4 @@ function autoMigrateFromJson(db) {
   })();
 }
 
-module.exports = { getDb };
+module.exports = { getDb, DB_PATH };

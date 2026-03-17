@@ -251,8 +251,30 @@ async function sendPasswordResetEmail(user, token, baseUrl) {
   return sendQuoteEmail(user.email, "Reimposta la tua password — Preventivo EASY", html);
 }
 
+// Invia un'email di alert all'amministratore (ALERT_EMAIL) per errori critici.
+// Fire-and-forget: non lancia mai eccezioni.
+async function sendCriticalAlert(subject, body) {
+  const to = process.env.ALERT_EMAIL;
+  if (!to || !isAvailable()) return;
+
+  const escapedBody = String(body).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+  const html = `<!DOCTYPE html>
+<html><head><meta charset="UTF-8"></head>
+<body style="font-family:monospace;padding:24px;background:#fff1f2">
+  <h2 style="color:#991b1b;margin:0 0 12px">ALERT: ${subject}</h2>
+  <pre style="background:#fef2f2;padding:16px;border-radius:6px;font-size:.85rem;white-space:pre-wrap;border:1px solid #fecaca">${escapedBody}</pre>
+  <p style="color:#9ca3af;font-size:.78rem;margin-top:16px">PreventivoEasy — ${new Date().toISOString()}</p>
+</body></html>`;
+
+  try {
+    await sendQuoteEmail(to, `[ALERT] ${subject} — PreventivoEasy`, html);
+  } catch (err) {
+    console.error("[Alert] Invio alert critico fallito:", err.message);
+  }
+}
+
 module.exports = {
   sendQuoteEmail, isAvailable, sendOrLog, loadEmailLog,
   testSmtp, sendTestEmail, getSmtpConfig, logSmtpStatus,
-  sendVerificationEmail, sendPasswordResetEmail
+  sendVerificationEmail, sendPasswordResetEmail, sendCriticalAlert
 };

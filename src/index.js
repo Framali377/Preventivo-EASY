@@ -7,9 +7,30 @@ const FileStore = require("session-file-store")(session);
 const logger = require("./utils/logger");
 const { runBackup } = require("./utils/backup");
 
-process.on("uncaughtException", (err) => {
+process.on("uncaughtException", async (err) => {
   logger.fatal({ err: err.message, stack: err.stack }, "Uncaught exception");
+  try {
+    const { sendCriticalAlert } = require("./utils/mailer");
+    await Promise.race([
+      sendCriticalAlert("Uncaught Exception", `${err.message}\n\n${err.stack}`),
+      new Promise(resolve => setTimeout(resolve, 5000))
+    ]);
+  } catch {}
   process.exit(1);
+});
+
+process.on("unhandledRejection", async (reason) => {
+  const msg = reason instanceof Error ? reason.message : String(reason);
+  const stack = reason instanceof Error ? reason.stack : "";
+  logger.error({ reason: msg, stack }, "Unhandled promise rejection");
+  try {
+    const { sendCriticalAlert } = require("./utils/mailer");
+    await Promise.race([
+      sendCriticalAlert("Unhandled Rejection", `${msg}\n\n${stack}`),
+      new Promise(resolve => setTimeout(resolve, 5000))
+    ]);
+  } catch {}
+  // Non uscire — unhandledRejection non è necessariamente fatale
 });
 
 const authRoute = require("./routes/auth");
@@ -70,6 +91,14 @@ if (process.env.ADMIN_RESET_SECRET && (WEAK_SECRETS.includes(process.env.ADMIN_R
   } else {
     console.warn("[WARN] ADMIN_RESET_SECRET debole — non usare in produzione");
   }
+}
+
+// ─── Verifica email: SMTP obbligatorio in produzione ───
+// Senza SMTP la verifica email è impossibile e gli utenti non possono usare il servizio.
+if (isProd && !(process.env.SMTP_HOST && process.env.SMTP_USER && process.env.SMTP_PASS)) {
+  console.error("[FATAL] SMTP non configurato in produzione.");
+  console.error("[FATAL] La verifica email è obbligatoria. Configura SMTP_HOST, SMTP_USER, SMTP_PASS nel .env");
+  process.exit(1);
 }
 
 app.use(
@@ -161,6 +190,15 @@ const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {
   logger.info({ port: PORT, env: process.env.NODE_ENV || "development", app_url: process.env.APP_URL }, "Preventivo EASY avviato");
   require("./utils/mailer").logSmtpStatus();
+
+  if (process.env.S3_BUCKET) {
+    logger.info({ bucket: process.env.S3_BUCKET, endpoint: process.env.S3_ENDPOINT || "AWS S3" }, "Backup offsite S3 configurato");
+  } else {
+    logger.info("Backup offsite S3 non configurato — solo backup locale");
+  }
+  if (process.env.ALERT_EMAIL) {
+    logger.info({ alert_email: process.env.ALERT_EMAIL }, "Alert email configurata");
+  }
 
   // Backup immediato all'avvio + ogni 24h
   runBackup();
