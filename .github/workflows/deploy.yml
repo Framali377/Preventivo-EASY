@@ -19,9 +19,8 @@ jobs:
           timeout: 120s
           script: |
             set -e
-            echo "=== Ricerca app ==="
-            APP_DIR=$(find /home /root /var/www -name "package.json" -path "*/preventivo*" 2>/dev/null | head -1 | xargs dirname)
-            echo "App in: $APP_DIR"
+            APP_DIR="/home/appuser/preventivo-easy"
+            echo "=== App dir: $APP_DIR ==="
             cd "$APP_DIR"
 
             echo "=== Git pull ==="
@@ -31,33 +30,13 @@ jobs:
             git log -1 --oneline
 
             echo "=== npm install ==="
-            npm install --production --silent
+            npm install --production
 
-            echo "=== .env check ==="
-            ls -la .env 2>/dev/null || echo "ATTENZIONE: .env non trovato"
-            grep -c "NODE_ENV" .env 2>/dev/null || true
+            echo "=== PM2 restart ==="
+            su - appuser -c "pm2 restart preventivo-easy && pm2 save"
+            sleep 4
 
-            echo "=== PM2 status ==="
-            ps aux | grep pm2 | grep -v grep || echo "Nessun processo pm2"
-            APP_USER=$(ps aux | grep -E "PM2|pm2" | grep -v grep | awk '{print $1}' | head -1)
-            echo "PM2 user: ${APP_USER:-nessuno}"
+            echo "=== PM2 logs ==="
+            su - appuser -c "pm2 logs preventivo-easy --lines 15 --nostream"
 
-            if [ -n "$APP_USER" ] && [ "$APP_USER" != "root" ]; then
-              echo "Riavvio come $APP_USER"
-              su - "$APP_USER" -c "pm2 restart preventivo-easy && pm2 save"
-              sleep 3
-              su - "$APP_USER" -c "pm2 logs preventivo-easy --lines 20 --nostream"
-            else
-              echo "Riavvio come root"
-              pm2 restart preventivo-easy 2>/dev/null || \
-                pm2 start "$APP_DIR/src/index.js" --name preventivo-easy -- --env production
-              pm2 save
-              sleep 3
-              pm2 logs preventivo-easy --lines 20 --nostream
-            fi
-
-            echo "=== PM2 list finale ==="
-            pm2 list 2>/dev/null || true
-            if [ -n "$APP_USER" ] && [ "$APP_USER" != "root" ]; then
-              su - "$APP_USER" -c "pm2 list"
-            fi
+            echo "=== Deploy completato ==="
