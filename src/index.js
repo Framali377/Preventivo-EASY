@@ -22,6 +22,7 @@ const requireAuth = require("./middleware/requireAuth");
 
 const app = express();
 app.set("trust proxy", 1);
+app.disable("x-powered-by");
 
 // ─── HEALTH CHECK — pubblico, solo stato minimo ───
 app.get("/health", (_req, res) => {
