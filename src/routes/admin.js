@@ -120,18 +120,39 @@ router.get("/", (req, res) => {
   const activeCount = getActiveSubscriberCount();
   const earlyRemaining = Math.max(0, EARLY_BIRD_LIMIT - activeCount);
 
-  const rows = users.map(u => {
+  // Ordina per data registrazione più recente
+  const sorted = [...users].sort((a, b) => new Date(b.created_at || 0) - new Date(a.created_at || 0));
+
+  const now = Date.now();
+  const ms7d = 7 * 24 * 60 * 60 * 1000;
+  const ms30d = 30 * 24 * 60 * 60 * 1000;
+  const newLast7  = users.filter(u => u.created_at && (now - new Date(u.created_at)) < ms7d).length;
+  const newLast30 = users.filter(u => u.created_at && (now - new Date(u.created_at)) < ms30d).length;
+  const unverified = users.filter(u => !u.email_verified).length;
+
+  const rows = sorted.map(u => {
     const pi = planInfo(u);
     const quotes = getQuoteCountByUser(u.id);
     const status = u.subscription_status || "\u2014";
     const disabled = u.disabled ? "yes" : "";
     const isAdmin = u.role === "admin";
+    const regDate = u.created_at
+      ? new Date(u.created_at).toLocaleDateString("it-IT", { day: "2-digit", month: "2-digit", year: "2-digit", hour: "2-digit", minute: "2-digit" })
+      : "—";
+    const isNew = u.created_at && (now - new Date(u.created_at)) < ms7d;
+    const verBadge = u.email_verified
+      ? '<span style="color:#16a34a;font-size:.72rem;font-weight:600">&#10003; Verificata</span>'
+      : '<span style="color:#dc2626;font-size:.72rem;font-weight:600">&#9888; Non verif.</span>';
 
     return `<tr class="${disabled ? "row-disabled" : ""}">
-      <td><a href="/admin/user/${esc(u.id)}" class="link">${esc(u.email)}</a></td>
+      <td>
+        <a href="/admin/user/${esc(u.id)}" class="link">${esc(u.email)}</a>
+        ${isNew ? '<span style="background:#fef3c7;color:#92400e;font-size:.65rem;font-weight:700;padding:1px 6px;border-radius:8px;margin-left:4px">NUOVO</span>' : ""}
+      </td>
       <td>${esc(u.name)}</td>
       <td><span class="tb-badge ${pi.cls}">${pi.label}</span></td>
-      <td>${esc(status)}</td>
+      <td style="font-size:.78rem;color:#6b7280">${regDate}</td>
+      <td class="c">${verBadge}</td>
       <td class="c">${quotes}</td>
       <td class="c">${u.credits || 0}</td>
       <td class="c">${disabled ? '<span style="color:#dc2626">Disattivo</span>' : '<span style="color:#22c55e">Attivo</span>'}</td>
@@ -164,6 +185,14 @@ router.get("/", (req, res) => {
         <div class="as-value">${users.length}</div>
       </div>
       <div class="admin-stat">
+        <div class="as-label">Nuovi (7 giorni)</div>
+        <div class="as-value" style="color:#0d9488">${newLast7}</div>
+      </div>
+      <div class="admin-stat">
+        <div class="as-label">Nuovi (30 giorni)</div>
+        <div class="as-value">${newLast30}</div>
+      </div>
+      <div class="admin-stat">
         <div class="as-label">Abbonati attivi</div>
         <div class="as-value">${activeCount}</div>
       </div>
@@ -172,8 +201,8 @@ router.get("/", (req, res) => {
         <div class="as-value">${earlyRemaining} / ${EARLY_BIRD_LIMIT}</div>
       </div>
       <div class="admin-stat">
-        <div class="as-label">Utenti Free</div>
-        <div class="as-value">${users.filter(u => !u.plan || u.plan === "free").length}</div>
+        <div class="as-label">Email non verificate</div>
+        <div class="as-value" style="${unverified > 0 ? "color:#dc2626" : ""}">${unverified}</div>
       </div>
     </div>
 
@@ -184,7 +213,8 @@ router.get("/", (req, res) => {
             <th>Email</th>
             <th>Nome</th>
             <th>Piano</th>
-            <th>Subscription</th>
+            <th>Registrato</th>
+            <th class="c">Email</th>
             <th class="c">Preventivi</th>
             <th class="c">Crediti</th>
             <th class="c">Stato</th>
