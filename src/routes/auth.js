@@ -291,10 +291,11 @@ router.post("/login", async (req, res) => {
   }
 
   req.session.userId = user.id;
-  const redirect = req.session.returnTo || "/dashboard";
+  const defaultRedirect = user.role === "admin" ? "/admin" : "/dashboard";
+  const redirect = req.session.returnTo || defaultRedirect;
   delete req.session.returnTo;
 
-  logger.info({ userId: user.id }, "Login effettuato");
+  logger.info({ userId: user.id, role: user.role || "user" }, "Login effettuato");
   const { password_hash: _, ...safeUser } = user;
   res.json({ success: true, user: safeUser, redirect });
 });

@@ -148,21 +148,33 @@ const NAV_ICONS = {
   new: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="12" y1="11" x2="12" y2="17"/><line x1="9" y1="14" x2="15" y2="14"/></svg>',
   prices: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/></svg>',
   profile: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>',
-  admin: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>'
+  admin:    '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>',
+  users:    '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>',
+  quotes:   '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/></svg>',
+  emails:   '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/></svg>',
+  revenue:  '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>',
+  health:   '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>'
 };
 
-function page({ title, user, content, extraCss, script, activePage }) {
-  const navItems = [
-    { href: "/dashboard", label: "I miei preventivi", key: "dashboard" },
-    { href: "/quotes/new", label: "Crea preventivo", key: "new" },
-    { href: "/settings/prices", label: "Listino prezzi", key: "prices" },
-    { href: "/profile", label: "Il mio profilo", key: "profile" }
-  ];
+// Voci di navigazione per admin puro (nessuna voce utente)
+const ADMIN_NAV_ITEMS = [
+  { href: "/admin",         label: "Utenti",      key: "users" },
+  { href: "/admin/quotes",  label: "Preventivi",  key: "quotes" },
+  { href: "/admin/emails",  label: "Email Log",   key: "emails" },
+  { href: "/admin/revenue", label: "Revenue",     key: "revenue" },
+  { href: "/admin/health",  label: "Sistema",     key: "health" }
+];
 
-  // Aggiungi voce Admin per admin
-  if (user && user.role === "admin") {
-    navItems.push({ href: "/admin", label: "Admin", key: "admin" });
-  }
+function page({ title, user, content, extraCss, script, activePage }) {
+  const isAdmin = user && user.role === "admin";
+
+  // Sidebar completamente diversa per admin
+  const navItems = isAdmin ? ADMIN_NAV_ITEMS : [
+    { href: "/dashboard",      label: "I miei preventivi", key: "dashboard" },
+    { href: "/quotes/new",     label: "Crea preventivo",   key: "new" },
+    { href: "/settings/prices",label: "Listino prezzi",    key: "prices" },
+    { href: "/profile",        label: "Il mio profilo",    key: "profile" }
+  ];
 
   const pi = planInfo(user);
 
@@ -170,11 +182,22 @@ function page({ title, user, content, extraCss, script, activePage }) {
     `<a href="${n.href}" class="sidebar-link${activePage === n.key ? ' active' : ''}">${NAV_ICONS[n.key] || ''}${n.label}</a>`
   ).join("\n        ");
 
+  const sidebarBottom = isAdmin
+    ? `<div style="font-size:.7rem;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:rgba(255,255,255,.35);margin-bottom:4px">Amministratore</div>
+      <div class="sidebar-user">${esc(user.name)}</div>
+      <button class="sidebar-logout" onclick="doLogout()">Esci</button>`
+    : `<span class="sidebar-plan ${pi.cls}">${pi.icon ? pi.icon + ' ' : ''}${pi.label}</span>
+      ${pi.label === 'Free' ? '<a href="/upgrade" style="display:block;font-size:.72rem;color:#f59e0b;margin-top:4px;text-decoration:none;font-weight:500">Passa a Pro &rarr;</a>' : ''}
+      <div class="sidebar-user">${esc(user.name)}</div>
+      <button class="sidebar-logout" onclick="doLogout()">Esci</button>`;
+
+  const logoHref = isAdmin ? "/admin" : "/dashboard";
+
   const shell = user ? `
   <button class="hamburger" id="hamburgerBtn">&#9776;</button>
   <div class="sidebar-overlay" id="sidebarOverlay"></div>
   <aside class="sidebar" id="sidebar">
-    <a href="/dashboard" class="sidebar-logo">
+    <a href="${logoHref}" class="sidebar-logo">
       <div class="sidebar-logo-icon">P</div>
       <span>Preventivo EASY</span>
     </a>
@@ -182,10 +205,7 @@ function page({ title, user, content, extraCss, script, activePage }) {
       ${sidebarNav}
     </nav>
     <div class="sidebar-bottom">
-      <span class="sidebar-plan ${pi.cls}">${pi.icon ? pi.icon + ' ' : ''}${pi.label}</span>
-      ${pi.label === 'Free' ? '<a href="/upgrade" style="display:block;font-size:.72rem;color:#f59e0b;margin-top:4px;text-decoration:none;font-weight:500">Passa a Pro &rarr;</a>' : ''}
-      <div class="sidebar-user">${esc(user.name)}</div>
-      <button class="sidebar-logout" onclick="doLogout()">Esci</button>
+      ${sidebarBottom}
     </div>
   </aside>
   <header class="topbar">

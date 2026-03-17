@@ -120,15 +120,17 @@ router.get("/", (req, res) => {
   const activeCount = getActiveSubscriberCount();
   const earlyRemaining = Math.max(0, EARLY_BIRD_LIMIT - activeCount);
 
+  // Escludi admin dalla lista utenti
+  const nonAdminUsers = users.filter(u => u.role !== "admin");
   // Ordina per data registrazione più recente
-  const sorted = [...users].sort((a, b) => new Date(b.created_at || 0) - new Date(a.created_at || 0));
+  const sorted = [...nonAdminUsers].sort((a, b) => new Date(b.created_at || 0) - new Date(a.created_at || 0));
 
   const now = Date.now();
   const ms7d = 7 * 24 * 60 * 60 * 1000;
   const ms30d = 30 * 24 * 60 * 60 * 1000;
-  const newLast7  = users.filter(u => u.created_at && (now - new Date(u.created_at)) < ms7d).length;
-  const newLast30 = users.filter(u => u.created_at && (now - new Date(u.created_at)) < ms30d).length;
-  const unverified = users.filter(u => !u.email_verified).length;
+  const newLast7  = nonAdminUsers.filter(u => u.created_at && (now - new Date(u.created_at)) < ms7d).length;
+  const newLast30 = nonAdminUsers.filter(u => u.created_at && (now - new Date(u.created_at)) < ms30d).length;
+  const unverified = nonAdminUsers.filter(u => !u.email_verified).length;
 
   const rows = sorted.map(u => {
     const pi = planInfo(u);
@@ -182,7 +184,7 @@ router.get("/", (req, res) => {
     <div class="admin-stats">
       <div class="admin-stat">
         <div class="as-label">Utenti totali</div>
-        <div class="as-value">${users.length}</div>
+        <div class="as-value">${nonAdminUsers.length}</div>
       </div>
       <div class="admin-stat">
         <div class="as-label">Nuovi (7 giorni)</div>
@@ -312,7 +314,7 @@ router.get("/", (req, res) => {
     }
   })();`;
 
-  res.send(page({ title: "Admin — Utenti", user: admin, content, extraCss: ADMIN_CSS, script, activePage: "admin" }));
+  res.send(page({ title: "Admin — Utenti", user: admin, content, extraCss: ADMIN_CSS, script, activePage: "users" }));
 });
 
 // ─── GET /admin/quotes — Lista preventivi ───
@@ -438,7 +440,7 @@ router.get("/quotes", (req, res) => {
     }
   })();`;
 
-  res.send(page({ title: "Admin — Preventivi", user: admin, content, extraCss: ADMIN_CSS, script, activePage: "admin" }));
+  res.send(page({ title: "Admin — Preventivi", user: admin, content, extraCss: ADMIN_CSS, script, activePage: "quotes" }));
 });
 
 // ─── GET /admin/emails — Email log ───
@@ -504,108 +506,135 @@ router.get("/emails", (req, res) => {
     </div>
   </div>`;
 
-  res.send(page({ title: "Admin — Email Log", user: admin, content, extraCss: ADMIN_CSS, activePage: "admin" }));
+  res.send(page({ title: "Admin — Email Log", user: admin, content, extraCss: ADMIN_CSS, activePage: "emails" }));
 });
 
-// ─── GET /admin/revenue — Analytics fatturato ───
+// ─── GET /admin/revenue — Revenue PreventivoEasy (abbonamenti) ───
 router.get("/revenue", (req, res) => {
   const admin = getUserById(req.session.userId);
-  const allQuotes = loadQuotes();
-  const users = loadUsers();
-  const userMap = {};
-  users.forEach(u => { userMap[u.id] = u; });
+  const users = loadUsers().filter(u => u.role !== "admin");
 
-  // Solo quote accettate/acconto
-  const accepted = allQuotes.filter(q => q.status === "accepted" || q.status === "acconto_pagato");
-  const totalRevenue = accepted.reduce((s, q) => s + (q.total || 0), 0);
-  const avgPerQuote = accepted.length > 0 ? totalRevenue / accepted.length : 0;
-  const sentOrBetter = allQuotes.filter(q => ["sent", "accepted", "acconto_pagato", "rejected"].includes(q.status));
-  const acceptanceRate = sentOrBetter.length > 0 ? Math.round((accepted.length / sentOrBetter.length) * 100) : 0;
+  // Prezzi abbonamenti (centesimi → euro)
+  const PRICE_EARLY    = 5.00;
+  const PRICE_STANDARD = 8.99;
+  const PRICE_PPU      = 0.79;
 
-  // Breakdown per mese
+  // Abbonati attivi per piano
+  const earlyActive    = users.filter(u => u.plan === "early"    && u.subscription_status === "active");
+  const standardActive = users.filter(u => u.plan === "standard" && u.subscription_status === "active");
+  const ppuUsers       = users.filter(u => u.credits && u.credits > 0);
+  const totalCredits   = ppuUsers.reduce((s, u) => s + (u.credits || 0), 0);
+
+  // MRR stimato (abbonamenti attivi)
+  const mrr = (earlyActive.length * PRICE_EARLY) + (standardActive.length * PRICE_STANDARD);
+
+  // Utenti per piano
+  const freeCount     = users.filter(u => (!u.plan || u.plan === "free") && u.subscription_status !== "active").length;
+  const churnedCount  = users.filter(u => (u.plan === "early" || u.plan === "standard") && u.subscription_status !== "active").length;
+
+  // Nuovi abbonati per mese (chi ha piano attivo, raggruppati per created_at)
   const byMonth = {};
-  accepted.forEach(q => {
-    const d = new Date(q.created_at);
+  [...earlyActive, ...standardActive].forEach(u => {
+    const d = new Date(u.created_at || Date.now());
     const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
-    if (!byMonth[key]) byMonth[key] = { count: 0, total: 0 };
-    byMonth[key].count++;
-    byMonth[key].total += q.total || 0;
+    if (!byMonth[key]) byMonth[key] = { early: 0, standard: 0 };
+    if (u.plan === "early") byMonth[key].early++;
+    else byMonth[key].standard++;
   });
-  const monthRows = Object.keys(byMonth).sort().reverse().map(m =>
-    `<tr><td>${m}</td><td class="c">${byMonth[m].count}</td><td class="r">${fmt(byMonth[m].total)} &euro;</td><td class="r">${fmt(byMonth[m].total / byMonth[m].count)} &euro;</td></tr>`
-  ).join("");
-
-  // Breakdown per utente
-  const byUser = {};
-  accepted.forEach(q => {
-    const uid = q.user_id || q.owner_user_id;
-    if (!byUser[uid]) byUser[uid] = { count: 0, total: 0 };
-    byUser[uid].count++;
-    byUser[uid].total += q.total || 0;
-  });
-  const userRows = Object.keys(byUser).sort((a, b) => byUser[b].total - byUser[a].total).map(uid => {
-    const u = userMap[uid];
+  const monthRows = Object.keys(byMonth).sort().reverse().map(m => {
+    const revenue = (byMonth[m].early * PRICE_EARLY) + (byMonth[m].standard * PRICE_STANDARD);
     return `<tr>
-      <td>${u ? `<a href="/admin/user/${esc(uid)}" class="link">${esc(u.name)}</a>` : esc(uid)}</td>
-      <td class="c">${byUser[uid].count}</td>
-      <td class="r">${fmt(byUser[uid].total)} &euro;</td>
-      <td class="r">${fmt(byUser[uid].total / byUser[uid].count)} &euro;</td>
+      <td>${m}</td>
+      <td class="c">${byMonth[m].early}</td>
+      <td class="c">${byMonth[m].standard}</td>
+      <td class="c">${byMonth[m].early + byMonth[m].standard}</td>
+      <td class="r">${fmt(revenue)} &euro;</td>
     </tr>`;
   }).join("");
+
+  // Attività piattaforma (valori aggregati, non revenue di PreventivoEasy)
+  const allQuotes = loadQuotes();
+  const totalQuotes = allQuotes.filter(q => users.find(u => u.id === (q.user_id || q.owner_user_id))).length;
+  const acceptedQuotes = allQuotes.filter(q => q.status === "accepted" || q.status === "acconto_pagato").length;
 
   const content = `
   <div class="wrap admin-wrap">
     ${adminNav("revenue")}
     <div class="admin-header">
-      <h2>Revenue Analytics</h2>
+      <h2>Revenue PreventivoEasy</h2>
+      <span style="color:#9ca3af;font-size:.82rem">Abbonamenti attivi e ricavi piattaforma</span>
     </div>
 
-    <div class="kpi-grid">
+    <div class="kpi-grid" style="margin-bottom:32px">
       <div class="kpi-card">
-        <div class="kpi-label">Fatturato totale</div>
-        <div class="kpi-value">${fmt(totalRevenue)} &euro;</div>
-        <div class="kpi-sub">${accepted.length} preventivi accettati</div>
+        <div class="kpi-label">MRR stimato</div>
+        <div class="kpi-value" style="color:#0d9488">${fmt(mrr)} &euro;</div>
+        <div class="kpi-sub">entrate mensili ricorrenti</div>
       </div>
       <div class="kpi-card">
-        <div class="kpi-label">Media per preventivo</div>
-        <div class="kpi-value">${fmt(avgPerQuote)} &euro;</div>
+        <div class="kpi-label">ARR stimato</div>
+        <div class="kpi-value">${fmt(mrr * 12)} &euro;</div>
+        <div class="kpi-sub">MRR &times; 12</div>
       </div>
       <div class="kpi-card">
-        <div class="kpi-label">Tasso accettazione</div>
-        <div class="kpi-value">${acceptanceRate}%</div>
-        <div class="kpi-sub">${accepted.length} / ${sentOrBetter.length} inviati</div>
+        <div class="kpi-label">Early Bird attivi</div>
+        <div class="kpi-value">${earlyActive.length}</div>
+        <div class="kpi-sub">${fmt(PRICE_EARLY)} &euro;/mese &bull; ${EARLY_BIRD_LIMIT - earlyActive.length} posti rimasti</div>
       </div>
       <div class="kpi-card">
-        <div class="kpi-label">Preventivi totali</div>
-        <div class="kpi-value">${allQuotes.length}</div>
+        <div class="kpi-label">Standard attivi</div>
+        <div class="kpi-value">${standardActive.length}</div>
+        <div class="kpi-sub">${fmt(PRICE_STANDARD)} &euro;/mese</div>
+      </div>
+      <div class="kpi-card">
+        <div class="kpi-label">Crediti in circolazione</div>
+        <div class="kpi-value">${totalCredits}</div>
+        <div class="kpi-sub">${ppuUsers.length} utenti &bull; ${fmt(PRICE_PPU)} &euro;/credito</div>
+      </div>
+      <div class="kpi-card">
+        <div class="kpi-label">Utenti Free</div>
+        <div class="kpi-value">${freeCount}</div>
+        <div class="kpi-sub">${churnedCount > 0 ? churnedCount + " ex-abbonati" : "nessun ex-abbonato"}</div>
       </div>
     </div>
 
-    <h3 style="font-size:.85rem;font-weight:600;color:#6b7280;text-transform:uppercase;letter-spacing:.04em;margin-bottom:14px">Breakdown per mese</h3>
+    <h3 style="font-size:.85rem;font-weight:600;color:#6b7280;text-transform:uppercase;letter-spacing:.04em;margin-bottom:14px">Abbonati attivi per mese di iscrizione</h3>
     <div class="admin-table" style="margin-bottom:32px">
       <table>
-        <thead><tr><th>Mese</th><th class="c">Preventivi</th><th class="r">Fatturato</th><th class="r">Media</th></tr></thead>
-        <tbody>${monthRows || '<tr><td colspan="4" class="c" style="padding:24px;color:#9ca3af">Nessun dato</td></tr>'}</tbody>
+        <thead><tr><th>Mese</th><th class="c">Early Bird</th><th class="c">Standard</th><th class="c">Totale</th><th class="r">Contributo MRR</th></tr></thead>
+        <tbody>${monthRows || '<tr><td colspan="5" class="c" style="padding:24px;color:#9ca3af">Nessun abbonato attivo</td></tr>'}</tbody>
       </table>
     </div>
 
-    <h3 style="font-size:.85rem;font-weight:600;color:#6b7280;text-transform:uppercase;letter-spacing:.04em;margin-bottom:14px">Breakdown per utente</h3>
-    <div class="admin-table">
-      <table>
-        <thead><tr><th>Utente</th><th class="c">Preventivi</th><th class="r">Fatturato</th><th class="r">Media</th></tr></thead>
-        <tbody>${userRows || '<tr><td colspan="4" class="c" style="padding:24px;color:#9ca3af">Nessun dato</td></tr>'}</tbody>
-      </table>
+    <h3 style="font-size:.85rem;font-weight:600;color:#6b7280;text-transform:uppercase;letter-spacing:.04em;margin-bottom:14px">Attivit&agrave; piattaforma</h3>
+    <div class="admin-stats">
+      <div class="admin-stat">
+        <div class="as-label">Preventivi generati</div>
+        <div class="as-value">${totalQuotes}</div>
+      </div>
+      <div class="admin-stat">
+        <div class="as-label">Preventivi accettati</div>
+        <div class="as-value">${acceptedQuotes}</div>
+      </div>
+      <div class="admin-stat">
+        <div class="as-label">Utenti totali</div>
+        <div class="as-value">${users.length}</div>
+      </div>
+      <div class="admin-stat">
+        <div class="as-label">Tasso conversione</div>
+        <div class="as-value">${users.length > 0 ? Math.round(((earlyActive.length + standardActive.length) / users.length) * 100) : 0}%</div>
+      </div>
     </div>
   </div>`;
 
-  res.send(page({ title: "Admin — Revenue", user: admin, content, extraCss: ADMIN_CSS, activePage: "admin" }));
+  res.send(page({ title: "Admin — Revenue", user: admin, content, extraCss: ADMIN_CSS, activePage: "revenue" }));
 });
 
 // ─── GET /admin/user/:id — Dettaglio utente ───
 router.get("/user/:id", (req, res) => {
   const admin = getUserById(req.session.userId);
   const target = getUserById(req.params.id);
-  if (!target) return res.status(404).send(page({ title: "Utente non trovato", user: admin, content: '<div class="wrap"><div class="alert alert-error">Utente non trovato</div></div>', extraCss: ADMIN_CSS, activePage: "admin" }));
+  if (!target) return res.status(404).send(page({ title: "Utente non trovato", user: admin, content: '<div class="wrap"><div class="alert alert-error">Utente non trovato</div></div>', extraCss: ADMIN_CSS, activePage: "users" }));
 
   const pi = planInfo(target);
   const allQuotes = loadQuotes().filter(q => q.user_id === target.id || q.owner_user_id === target.id);
@@ -731,7 +760,7 @@ router.get("/user/:id", (req, res) => {
     }
   })();`;
 
-  res.send(page({ title: "Admin — " + target.name, user: admin, content, extraCss: ADMIN_CSS, script, activePage: "admin" }));
+  res.send(page({ title: "Admin — " + target.name, user: admin, content, extraCss: ADMIN_CSS, script, activePage: "users" }));
 });
 
 // ─── GET /admin/health — Stato sistema ───
@@ -937,7 +966,7 @@ router.get("/health", async (req, res) => {
     }
   })();`;
 
-  res.send(page({ title: "Admin — Sistema", user: admin, content, extraCss: ADMIN_CSS, script, activePage: "admin" }));
+  res.send(page({ title: "Admin — Sistema", user: admin, content, extraCss: ADMIN_CSS, script, activePage: "health" }));
 });
 
 // ─── GET /admin/test-email — Test SMTP (JSON) ───
