@@ -4,6 +4,49 @@ const path = require("path");
 const fs = require("fs");
 const { getUserPrompt, getUserBehaviorProfile } = require("./userPrompts");
 const { loadQuotes } = require("./storage");
+const logger = require("./logger");
+
+// ── Limiti utilizzo API Claude ──
+const DAILY_USER_LIMIT = Number(process.env.CLAUDE_DAILY_USER_LIMIT) || 10;
+const DAILY_GLOBAL_LIMIT = Number(process.env.CLAUDE_DAILY_GLOBAL_LIMIT) || 500;
+
+function checkAndTrackUsage(userId) {
+  const { getDb } = require("./db");
+  const db = getDb();
+  const today = new Date().toISOString().slice(0, 10); // YYYY-MM-DD
+
+  // Controlla limite globale
+  const globalRow = db.prepare(
+    "SELECT COALESCE(SUM(call_count), 0) as total FROM api_usage WHERE date = ?"
+  ).get(today);
+  if (globalRow.total >= DAILY_GLOBAL_LIMIT) {
+    logger.warn({ today, total: globalRow.total }, "Limite globale Claude API raggiunto");
+    throw Object.assign(
+      new Error("Servizio temporaneamente non disponibile. Riprova domani."),
+      { code: "GLOBAL_LIMIT_EXCEEDED" }
+    );
+  }
+
+  // Controlla limite per utente
+  const userRow = db.prepare(
+    "SELECT call_count FROM api_usage WHERE user_id = ? AND date = ?"
+  ).get(userId, today);
+  if (userRow && userRow.call_count >= DAILY_USER_LIMIT) {
+    logger.warn({ userId, today, count: userRow.call_count }, "Limite utente Claude API raggiunto");
+    throw Object.assign(
+      new Error(`Hai raggiunto il limite giornaliero di ${DAILY_USER_LIMIT} generazioni AI. Riprova domani.`),
+      { code: "USER_LIMIT_EXCEEDED" }
+    );
+  }
+
+  // Incrementa contatore
+  db.prepare(`
+    INSERT INTO api_usage (user_id, date, call_count) VALUES (?, ?, 1)
+    ON CONFLICT(user_id, date) DO UPDATE SET call_count = call_count + 1
+  `).run(userId, today);
+
+  logger.info({ userId, today, count: (userRow?.call_count ?? 0) + 1 }, "Claude API call tracciata");
+}
 
 // ── Load profession templates ──
 const professionTemplates = JSON.parse(
@@ -222,6 +265,8 @@ Rispondi SOLO con questo formato JSON:
 // ── Nuova funzione: suggerimenti costo/margine per voce ──
 
 async function generateCostSuggestions(input) {
+  if (input.user_id) checkAndTrackUsage(input.user_id);
+
   const language = input.language || "it";
 
   let userContext = null;
@@ -309,6 +354,8 @@ Rispondi SOLO con questo formato JSON:
 // ── Ri-stima singola voce con input aggiuntivo dall'utente ──
 
 async function reEstimateSingleItem({ user_id, professional, description, user_input, pricing_preset, profession }) {
+  if (user_id) checkAndTrackUsage(user_id);
+
   const language = "it";
 
   let userContext = null;
@@ -366,4 +413,4 @@ function isAvailable() {
   return !!process.env.CLAUDE_API_KEY;
 }
 
-module.exports = { generateQuoteWithClaude, generateCostSuggestions, reEstimateSingleItem, isAvailable };
+module.exports = { generateQuoteWithClaude, generateCostSuggestions, reEstimateSingleItem, isAvailable, checkAndTrackUsage };

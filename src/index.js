@@ -1,11 +1,14 @@
 require("dotenv").config();
 const express = require("express");
+const helmet = require("helmet");
 const session = require("express-session");
 const path = require("path");
 const FileStore = require("session-file-store")(session);
+const logger = require("./utils/logger");
+const { runBackup } = require("./utils/backup");
 
 process.on("uncaughtException", (err) => {
-  console.error("[FATAL] Uncaught exception:", err.message, err.stack);
+  logger.fatal({ err: err.message, stack: err.stack }, "Uncaught exception");
   process.exit(1);
 });
 
@@ -23,6 +26,7 @@ const requireAuth = require("./middleware/requireAuth");
 const app = express();
 app.set("trust proxy", 1);
 app.disable("x-powered-by");
+app.use(helmet({ contentSecurityPolicy: false })); // CSP separato se necessario
 
 // ─── HEALTH CHECK — pubblico, solo stato minimo ───
 app.get("/health", (_req, res) => {
@@ -155,6 +159,10 @@ app.get("/health/admin", requireAuth, requireAdmin, (_req, res) => {
 // ─── Start ───
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {
-  console.log(`Preventivo EASY running | port=${PORT} | env=${process.env.NODE_ENV || "development"} | APP_URL=${process.env.APP_URL || "(non impostato)"}`);
+  logger.info({ port: PORT, env: process.env.NODE_ENV || "development", app_url: process.env.APP_URL }, "Preventivo EASY avviato");
   require("./utils/mailer").logSmtpStatus();
+
+  // Backup immediato all'avvio + ogni 24h
+  runBackup();
+  setInterval(runBackup, 24 * 60 * 60 * 1000);
 });

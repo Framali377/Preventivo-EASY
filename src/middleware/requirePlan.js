@@ -7,6 +7,14 @@ function requirePlan(req, res, next) {
   const user = getUserById(req.session.userId);
   if (!user) return res.status(401).json({ success: false, error: "Autenticazione richiesta" });
 
+  if (!user.email_verified) {
+    return res.status(403).json({
+      success: false,
+      error: "Verifica la tua email per poter generare preventivi.",
+      email_unverified: true
+    });
+  }
+
   const plan = user.plan || "free";
 
   // Abbonamento attivo (early o standard)

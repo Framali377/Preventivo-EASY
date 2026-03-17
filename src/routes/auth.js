@@ -1,12 +1,16 @@
 // src/routes/auth.js
 const express = require("express");
 const bcrypt = require("bcrypt");
+const crypto = require("crypto");
 const router = express.Router();
-const { createUser, getUserByEmail } = require("../utils/storage");
+const { createUser, getUserByEmail, getUserById, updateUser } = require("../utils/storage");
+const { sendVerificationEmail, sendPasswordResetEmail, isAvailable: smtpAvailable } = require("../utils/mailer");
+const { getDb } = require("../utils/db");
+const logger = require("../utils/logger");
 
 const SALT_ROUNDS = 10;
 
-// ── Shared auth page shell (standalone, no topbar) ──
+// ── Shared auth page shell ──
 function authPage({ title, cardHtml, script }) {
   return `<!DOCTYPE html>
 <html lang="it">
@@ -39,6 +43,7 @@ function authPage({ title, cardHtml, script }) {
     .auth-footer a:hover{text-decoration:underline}
     .alert{padding:12px 16px;border-radius:8px;font-size:.85rem;margin-bottom:18px;display:none}
     .alert-error{background:#fef2f2;color:#991b1b;border:1px solid #fecaca}
+    .alert-success{background:#f0fdf4;color:#166534;border:1px solid #bbf7d0}
     .free-badge{display:inline-flex;align-items:center;gap:5px;background:#ecfdf5;color:#065f46;font-size:.76rem;font-weight:600;padding:4px 12px;border-radius:16px;margin-top:8px}
     .back-link{display:block;text-align:center;margin-top:16px;font-size:.82rem;color:#9ca3af}
     .back-link a{color:#6b7280;text-decoration:none}
@@ -142,7 +147,7 @@ router.get("/register", (req, res) => {
       </div>
       <div class="field">
         <label for="password">Password</label>
-        <input type="password" id="password" name="password" required minlength="6" placeholder="Minimo 6 caratteri" autocomplete="new-password">
+        <input type="password" id="password" name="password" required minlength="8" placeholder="Minimo 8 caratteri" autocomplete="new-password">
       </div>
       <div class="field">
         <label for="category">Categoria professionale</label>
@@ -219,18 +224,17 @@ router.post("/register", async (req, res) => {
   if (!email) errors.push("Inserisci la tua email");
   else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) errors.push("L'email inserita non è valida");
   if (!password) errors.push("Inserisci una password");
-  else if (password.length < 6) errors.push("La password deve avere almeno 6 caratteri");
+  else if (password.length < 8) errors.push("La password deve avere almeno 8 caratteri");
   if (!name) errors.push("Inserisci il tuo nome");
 
-  if (errors.length) {
-    return res.status(400).json({ success: false, errors });
-  }
+  if (errors.length) return res.status(400).json({ success: false, errors });
 
   if (getUserByEmail(email)) {
     return res.status(409).json({ success: false, error: "Esiste già un account con questa email. Prova ad accedere." });
   }
 
   const password_hash = await bcrypt.hash(password, SALT_ROUNDS);
+  const smtpConfigured = smtpAvailable();
 
   const user = {
     id: `u-${Date.now()}`,
@@ -240,13 +244,29 @@ router.post("/register", async (req, res) => {
     category: category || null,
     city: city || null,
     plan: plan || "free",
-    created_at: new Date().toISOString()
+    created_at: new Date().toISOString(),
+    // Se SMTP non configurato o in dev, verifica subito
+    email_verified: (!smtpConfigured || process.env.NODE_ENV !== "production") ? 1 : 0
   };
 
   createUser(user);
-
   req.session.userId = user.id;
 
+  // Invia email di verifica se SMTP disponibile e in produzione
+  if (smtpConfigured && process.env.NODE_ENV === "production") {
+    const token = crypto.randomBytes(32).toString("hex");
+    const expires = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString();
+    getDb().prepare(
+      "INSERT INTO email_verification_tokens (token, user_id, expires_at) VALUES (?, ?, ?)"
+    ).run(token, user.id, expires);
+
+    const baseUrl = process.env.APP_URL || `${req.protocol}://${req.get("host")}`;
+    sendVerificationEmail(user, token, baseUrl).catch(err =>
+      logger.error({ err: err.message, userId: user.id }, "Invio email verifica fallito")
+    );
+  }
+
+  logger.info({ userId: user.id, email: user.email }, "Nuovo utente registrato");
   const { password_hash: _, ...safeUser } = user;
   res.status(201).json({ success: true, user: safeUser });
 });
@@ -266,32 +286,218 @@ router.post("/login", async (req, res) => {
 
   const match = await bcrypt.compare(password, user.password_hash);
   if (!match) {
+    logger.warn({ email }, "Tentativo login fallito");
     return res.status(401).json({ success: false, error: "Email o password non corretti. Riprova." });
   }
 
   req.session.userId = user.id;
-
   const redirect = req.session.returnTo || "/dashboard";
   delete req.session.returnTo;
 
+  logger.info({ userId: user.id }, "Login effettuato");
   const { password_hash: _, ...safeUser } = user;
   res.json({ success: true, user: safeUser, redirect });
 });
 
-// GET /auth/forgot (placeholder)
+// GET /auth/verify-email
+router.get("/verify-email", (req, res) => {
+  const { token } = req.query;
+  if (!token) return res.redirect("/auth/login");
+
+  const db = getDb();
+  const record = db.prepare(
+    "SELECT * FROM email_verification_tokens WHERE token = ? AND used = 0"
+  ).get(token);
+
+  if (!record || new Date(record.expires_at) < new Date()) {
+    return res.send(authPage({
+      title: "Link scaduto",
+      cardHtml: `
+      <div class="auth-logo"><div class="auth-logo-icon">P</div><span>Preventivo EASY</span></div>
+      <h1 class="auth-title">Link non valido</h1>
+      <p class="auth-sub">Il link di verifica è scaduto o non valido.</p>
+      <a href="/auth/login" class="btn btn-primary" style="text-decoration:none;display:flex">Torna al login</a>`
+    }));
+  }
+
+  db.prepare("UPDATE email_verification_tokens SET used = 1 WHERE token = ?").run(token);
+  updateUser(record.user_id, { email_verified: 1 });
+  logger.info({ userId: record.user_id }, "Email verificata");
+
+  // Se loggato, redirect dashboard; altrimenti login
+  const redirect = req.session?.userId === record.user_id ? "/dashboard" : "/auth/login";
+  res.redirect(redirect + "?verified=1");
+});
+
+// GET /auth/forgot
 router.get("/forgot", (req, res) => {
   res.send(authPage({
     title: "Password dimenticata",
     cardHtml: `
-    <div class="auth-logo">
-      <div class="auth-logo-icon">P</div>
-      <span>Preventivo EASY</span>
-    </div>
+    <div class="auth-logo"><div class="auth-logo-icon">P</div><span>Preventivo EASY</span></div>
     <h1 class="auth-title">Password dimenticata?</h1>
-    <p class="auth-sub">Questa funzionalit&agrave; sar&agrave; disponibile a breve. Nel frattempo, contattaci per assistenza.</p>
-    <a href="mailto:support@preventivoeasy.it" class="btn btn-primary" style="text-decoration:none;display:block;text-align:center">Contattaci via email</a>
-    <div class="back-link" style="margin-top:20px"><a href="/auth/login">&larr; Torna al login</a></div>`
+    <p class="auth-sub">Inserisci la tua email e ti inviamo un link per reimpostare la password.</p>
+    <div id="error" class="alert alert-error"></div>
+    <div id="success" class="alert alert-success"></div>
+    <form id="forgotForm">
+      <div class="field">
+        <label for="email">Email</label>
+        <input type="email" id="email" name="email" required placeholder="La tua email" autocomplete="email">
+      </div>
+      <button type="submit" class="btn btn-primary">Invia link di reset</button>
+    </form>
+    <div class="back-link" style="margin-top:20px"><a href="/auth/login">&larr; Torna al login</a></div>`,
+    script: `
+    document.getElementById('forgotForm').addEventListener('submit', function(e) {
+      e.preventDefault();
+      var errEl = document.getElementById('error');
+      var okEl = document.getElementById('success');
+      errEl.style.display = 'none'; okEl.style.display = 'none';
+      var btn = e.target.querySelector('button');
+      btn.disabled = true; btn.textContent = 'Invio in corso...';
+      fetch('/auth/forgot', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: document.getElementById('email').value })
+      })
+      .then(function(r) { return r.json(); })
+      .then(function(data) {
+        if (data.success) {
+          okEl.textContent = data.message;
+          okEl.style.display = 'block';
+          document.getElementById('forgotForm').style.display = 'none';
+        } else {
+          errEl.textContent = data.error || 'Errore';
+          errEl.style.display = 'block';
+          btn.disabled = false; btn.textContent = 'Invia link di reset';
+        }
+      })
+      .catch(function() {
+        errEl.textContent = 'Errore di connessione. Riprova.';
+        errEl.style.display = 'block';
+        btn.disabled = false; btn.textContent = 'Invia link di reset';
+      });
+    });`
   }));
+});
+
+// POST /auth/forgot
+router.post("/forgot", async (req, res) => {
+  const { email } = req.body;
+  if (!email) return res.status(400).json({ success: false, error: "Inserisci la tua email" });
+
+  const user = getUserByEmail(email);
+  // Risposta sempre positiva (anti-enumeration)
+  const msg = "Se l'email è registrata, riceverai un link per reimpostare la password.";
+
+  if (!user) return res.json({ success: true, message: msg });
+
+  const token = crypto.randomBytes(32).toString("hex");
+  const expires = new Date(Date.now() + 60 * 60 * 1000).toISOString(); // 1 ora
+  getDb().prepare(
+    "INSERT INTO password_reset_tokens (token, user_id, expires_at) VALUES (?, ?, ?)"
+  ).run(token, user.id, expires);
+
+  const baseUrl = process.env.APP_URL || `${req.protocol}://${req.get("host")}`;
+  try {
+    await sendPasswordResetEmail(user, token, baseUrl);
+    logger.info({ userId: user.id }, "Email reset password inviata");
+  } catch (err) {
+    logger.error({ err: err.message, userId: user.id }, "Invio email reset fallito");
+  }
+
+  res.json({ success: true, message: msg });
+});
+
+// GET /auth/reset
+router.get("/reset", (req, res) => {
+  const { token } = req.query;
+  if (!token) return res.redirect("/auth/forgot");
+
+  const record = getDb().prepare(
+    "SELECT * FROM password_reset_tokens WHERE token = ? AND used = 0"
+  ).get(token);
+
+  if (!record || new Date(record.expires_at) < new Date()) {
+    return res.send(authPage({
+      title: "Link scaduto",
+      cardHtml: `
+      <div class="auth-logo"><div class="auth-logo-icon">P</div><span>Preventivo EASY</span></div>
+      <h1 class="auth-title">Link scaduto</h1>
+      <p class="auth-sub">Il link di reset è scaduto o già utilizzato. Richiedine uno nuovo.</p>
+      <a href="/auth/forgot" class="btn btn-primary" style="text-decoration:none;display:flex">Richiedi nuovo link</a>`
+    }));
+  }
+
+  res.send(authPage({
+    title: "Nuova password",
+    cardHtml: `
+    <div class="auth-logo"><div class="auth-logo-icon">P</div><span>Preventivo EASY</span></div>
+    <h1 class="auth-title">Nuova password</h1>
+    <p class="auth-sub">Scegli una nuova password per il tuo account.</p>
+    <div id="error" class="alert alert-error"></div>
+    <form id="resetForm">
+      <input type="hidden" name="token" value="${token}">
+      <div class="field">
+        <label for="password">Nuova password</label>
+        <input type="password" id="password" name="password" required minlength="8" placeholder="Minimo 8 caratteri" autocomplete="new-password">
+      </div>
+      <button type="submit" class="btn btn-primary">Reimposta password</button>
+    </form>`,
+    script: `
+    document.getElementById('resetForm').addEventListener('submit', function(e) {
+      e.preventDefault();
+      var errEl = document.getElementById('error');
+      errEl.style.display = 'none';
+      var btn = e.target.querySelector('button');
+      btn.disabled = true; btn.textContent = 'Salvataggio...';
+      fetch('/auth/reset', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          token: e.target.querySelector('[name=token]').value,
+          password: document.getElementById('password').value
+        })
+      })
+      .then(function(r) { return r.json(); })
+      .then(function(data) {
+        if (data.success) {
+          window.location.href = '/auth/login?reset=1';
+        } else {
+          errEl.textContent = data.error || 'Errore';
+          errEl.style.display = 'block';
+          btn.disabled = false; btn.textContent = 'Reimposta password';
+        }
+      });
+    });`
+  }));
+});
+
+// POST /auth/reset
+router.post("/reset", async (req, res) => {
+  const { token, password } = req.body;
+  if (!token || !password) {
+    return res.status(400).json({ success: false, error: "Dati mancanti" });
+  }
+  if (password.length < 8) {
+    return res.status(400).json({ success: false, error: "La password deve avere almeno 8 caratteri" });
+  }
+
+  const db = getDb();
+  const record = db.prepare(
+    "SELECT * FROM password_reset_tokens WHERE token = ? AND used = 0"
+  ).get(token);
+
+  if (!record || new Date(record.expires_at) < new Date()) {
+    return res.status(400).json({ success: false, error: "Link scaduto o già utilizzato. Richiedine uno nuovo." });
+  }
+
+  const password_hash = await bcrypt.hash(password, SALT_ROUNDS);
+  db.prepare("UPDATE password_reset_tokens SET used = 1 WHERE token = ?").run(token);
+  updateUser(record.user_id, { password_hash });
+
+  logger.info({ userId: record.user_id }, "Password reimpostata");
+  res.json({ success: true });
 });
 
 // POST /auth/logout

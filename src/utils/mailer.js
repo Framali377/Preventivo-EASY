@@ -211,4 +211,48 @@ async function sendOrLog(to, subject, html, quoteId) {
   return { sent: false, logged: true, failed: false, error: null };
 }
 
-module.exports = { sendQuoteEmail, isAvailable, sendOrLog, loadEmailLog, testSmtp, sendTestEmail, getSmtpConfig, logSmtpStatus };
+async function sendVerificationEmail(user, token, baseUrl) {
+  const link = `${baseUrl}/auth/verify-email?token=${token}`;
+  const html = `<!DOCTYPE html>
+<html><head><meta charset="UTF-8"></head>
+<body style="font-family:Inter,sans-serif;padding:40px;background:#faf9f7">
+  <div style="max-width:480px;margin:0 auto;background:#fff;border-radius:12px;padding:32px;box-shadow:0 2px 12px rgba(0,0,0,.08)">
+    <h2 style="color:#0d9488;margin:0 0 12px">Verifica la tua email</h2>
+    <p style="color:#374151;line-height:1.6">Ciao ${user.name},</p>
+    <p style="color:#374151;line-height:1.6">Clicca il pulsante qui sotto per verificare il tuo account Preventivo EASY.</p>
+    <div style="text-align:center;margin:28px 0">
+      <a href="${link}" style="background:linear-gradient(135deg,#0d9488,#0f766e);color:#fff;padding:14px 32px;border-radius:8px;text-decoration:none;font-weight:600;font-size:.95rem">Verifica email</a>
+    </div>
+    <p style="color:#9ca3af;font-size:.82rem">Il link scade tra 24 ore. Se non hai creato questo account, ignora questa email.</p>
+    <hr style="border:none;border-top:1px solid #e5e7eb;margin:20px 0">
+    <p style="font-size:.78rem;color:#9ca3af">Preventivo EASY — ${baseUrl}</p>
+  </div>
+</body></html>`;
+  return sendQuoteEmail(user.email, "Verifica la tua email — Preventivo EASY", html);
+}
+
+async function sendPasswordResetEmail(user, token, baseUrl) {
+  const link = `${baseUrl}/auth/reset?token=${token}`;
+  const html = `<!DOCTYPE html>
+<html><head><meta charset="UTF-8"></head>
+<body style="font-family:Inter,sans-serif;padding:40px;background:#faf9f7">
+  <div style="max-width:480px;margin:0 auto;background:#fff;border-radius:12px;padding:32px;box-shadow:0 2px 12px rgba(0,0,0,.08)">
+    <h2 style="color:#0d9488;margin:0 0 12px">Reimposta la tua password</h2>
+    <p style="color:#374151;line-height:1.6">Ciao ${user.name},</p>
+    <p style="color:#374151;line-height:1.6">Hai richiesto di reimpostare la password per il tuo account Preventivo EASY.</p>
+    <div style="text-align:center;margin:28px 0">
+      <a href="${link}" style="background:linear-gradient(135deg,#0d9488,#0f766e);color:#fff;padding:14px 32px;border-radius:8px;text-decoration:none;font-weight:600;font-size:.95rem">Reimposta password</a>
+    </div>
+    <p style="color:#9ca3af;font-size:.82rem">Il link scade tra 1 ora. Se non hai richiesto questo reset, ignora questa email.</p>
+    <hr style="border:none;border-top:1px solid #e5e7eb;margin:20px 0">
+    <p style="font-size:.78rem;color:#9ca3af">Preventivo EASY — ${baseUrl}</p>
+  </div>
+</body></html>`;
+  return sendQuoteEmail(user.email, "Reimposta la tua password — Preventivo EASY", html);
+}
+
+module.exports = {
+  sendQuoteEmail, isAvailable, sendOrLog, loadEmailLog,
+  testSmtp, sendTestEmail, getSmtpConfig, logSmtpStatus,
+  sendVerificationEmail, sendPasswordResetEmail
+};
