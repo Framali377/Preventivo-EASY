@@ -23,21 +23,9 @@ const requireAuth = require("./middleware/requireAuth");
 const app = express();
 app.set("trust proxy", 1);
 
-// ─── HEALTH CHECK — nessun middleware, prima di tutto ───
+// ─── HEALTH CHECK — pubblico, solo stato minimo ───
 app.get("/health", (_req, res) => {
-  const { isAvailable, getSmtpConfig } = require("./utils/mailer");
-  const uptime = process.uptime();
-  const mem = process.memoryUsage();
-  res.status(200).json({
-    status: "ok",
-    env: process.env.NODE_ENV || "development",
-    uptime_s: Math.round(uptime),
-    memory_mb: Math.round(mem.rss / 1024 / 1024),
-    smtp: isAvailable() ? "configured" : "not_configured",
-    smtp_host: getSmtpConfig().host,
-    app_url: process.env.APP_URL || null,
-    timestamp: new Date().toISOString()
-  });
+  res.status(200).json({ status: "ok" });
 });
 
 // ─── SEO: robots.txt + sitemap.xml ───
@@ -144,6 +132,24 @@ app.use("/upgrade", requireAuth, upgradeRoute);
 app.use("/settings/prices", requireAuth, pricesRoute);
 app.post("/ai/suggest-prices", requireAuth, aiLimiter, pricesRoute.suggestPricesHandler);
 app.use("/admin", require("./routes/admin"));
+
+// ─── HEALTH CHECK dettagliato — solo admin ───
+const requireAdmin = require("./middleware/requireAdmin");
+app.get("/health/admin", requireAuth, requireAdmin, (_req, res) => {
+  const { isAvailable, getSmtpConfig } = require("./utils/mailer");
+  const uptime = process.uptime();
+  const mem = process.memoryUsage();
+  res.json({
+    status: "ok",
+    env: process.env.NODE_ENV || "development",
+    uptime_s: Math.round(uptime),
+    memory_mb: Math.round(mem.rss / 1024 / 1024),
+    smtp: isAvailable() ? "configured" : "not_configured",
+    smtp_host: getSmtpConfig().host,
+    app_url: process.env.APP_URL || null,
+    timestamp: new Date().toISOString()
+  });
+});
 
 // ─── Start ───
 const PORT = process.env.PORT || 3000;
